@@ -27,6 +27,9 @@ struct smp_player {
     bool errored;
 
     bool eos_pushed;
+    /* Play() has been issued. It can be triggered from either the pipeline's thread or the
+     * feeding one, whichever gets there first - see ensure_playing(). */
+    bool play_issued;
     bool playing;
     int64_t start_ns;
     int64_t frames_rendered;
@@ -51,6 +54,29 @@ static bool plane_noop_prepare(void *self, smp_load_params *params) {
 }
 
 static void load_callback(int type, int64_t num_value, const char *str_value, void *user);
+
+/*
+ * Starts playback exactly once.
+ *
+ * The obvious place to call Play() is on LOADCOMPLETED, and that is what every reference
+ * implementation does - but the event is not dependable. On webOS 2.2 it does not arrive
+ * until feeding stops, so a player that waits for it never starts: with
+ * esInfo.pauseAtDecodeTime set the pipeline shows the first picture and then holds it,
+ * which looks exactly like a decode failure.
+ *
+ * So whichever happens first wins - the event, or the first buffer the pipeline accepts.
+ * By then Load() has returned true and data is flowing, which is enough.
+ */
+static void ensure_playing(smp_player *player) {
+    pthread_mutex_lock(&player->lock);
+    bool issue = !player->play_issued;
+    player->play_issued = true;
+    pthread_mutex_unlock(&player->lock);
+
+    if (issue) {
+        smp_api_play(player->api);
+    }
+}
 
 smp_player *smp_player_create(const smp_video_plane *plane) {
     smp_player *player = calloc(1, sizeof(smp_player));
@@ -175,6 +201,7 @@ smp_feed_result smp_player_feed(smp_player *player, const void *data, size_t siz
         }
         pthread_mutex_unlock(&player->lock);
         if (first) {
+            ensure_playing(player);
             player->plane.start_playing(player->plane.self);
         }
     }
@@ -197,6 +224,7 @@ void smp_player_unload(smp_player *player) {
     bool loaded = player->loaded;
     bool eos_pushed = player->eos_pushed;
     player->loaded = false;
+    player->play_issued = true;
     player->eos_pushed = true;
     player->load_completed = false;
     pthread_mutex_unlock(&player->lock);
@@ -241,7 +269,7 @@ static void load_callback(int type, int64_t num_value, const char *str_value, vo
             const char *media_id = smp_api_media_id(player->api);
             fprintf(stderr, "[smp] load completed, mediaId=%s\n", media_id ? media_id : "(none)");
             player->plane.load_completed(player->plane.self, media_id);
-            smp_api_play(player->api);
+            ensure_playing(player);
             break;
         }
         case SMP_EVENT_FRAMEREADY: {

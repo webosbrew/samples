@@ -24,9 +24,16 @@ mkdir -p "$outdir"
 # -bsf:v h264_mp4toannexb is a no-op when the source is already Annex-B, and essential when
 # it came out of an MP4 (length-prefixed NALUs, SPS/PPS in the container instead of in-band).
 # The samples' parser only understands start codes, and needs in-band SPS/PPS to decode.
+#
+# bframes=0 matters more than it looks. A raw elementary stream carries no timing, so the
+# samples synthesise a timestamp from a frame counter - and that is only a presentation
+# timestamp if decode order and presentation order are the same. B-frames break that: the
+# counter becomes a decode timestamp, and any decoder that trusts the order it is fed will
+# show frames jumping backwards. LGNC has no timestamp parameter at all, so it is the one
+# where this is immediately visible.
 ffmpeg -y -i "$input" -t "$duration" \
     -an -c:v libx264 -profile:v main -pix_fmt yuv420p \
-    -x264-params keyint=60:min-keyint=60:scenecut=0 \
+    -x264-params keyint=60:min-keyint=60:scenecut=0:bframes=0 \
     -bsf:v h264_mp4toannexb -f h264 "$outdir/sample.h264"
 
 # ADTS, because every frame then carries its own header - the sample can walk the file with

@@ -27,7 +27,13 @@ typedef struct es_sample {
 } es_sample;
 
 /* Open an Annex-B H.264 stream. Timestamps are synthesised from the frame rate, because a
- * raw elementary stream carries no timing of its own. */
+ * raw elementary stream carries no timing of its own.
+ *
+ * That synthesis is only valid when decode order and presentation order agree - which
+ * means the stream must have no B-frames. With B-frames the counter produces a decode
+ * timestamp wearing a presentation timestamp's clothes, and a decoder that displays in the
+ * order it is fed will visibly jump backwards. assets/make-sample.sh passes bframes=0 for
+ * exactly this reason; a real player would take timing from a container instead. */
 es_file *es_file_open_h264(const char *path, int fps_num, int fps_den);
 
 /* Open an ADTS AAC stream. Timing comes from the sample rate in each frame header, so
