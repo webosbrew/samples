@@ -123,6 +123,10 @@ It proves the binary will *load*, and nothing more. An API can export every symb
 still not work - LGNC on webOS 5 is exactly that - so a clean `-verify` is a precondition
 for testing on a device, not a substitute for it.
 
+The bundled dumps also stop at the 2022 models. Anything newer - `media/smp/webos5` was
+tested on a 2025 OLED running webOS 10.3.1 - is outside what `-verify` can say anything
+about, and rests on the device test alone.
+
 ### Checking the stream parsers without a TV
 
 ```sh
@@ -143,7 +147,7 @@ hard to diagnose from the TV side.
 | `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - same TV, same clip, `FIRST_FRAME_PRESENTED` and the full 300 / 470 |
 | `media/lgnc` | 1 - 4 | **verified on hardware** - same TV, same clip, both decoders opened and the full 300 / 470. Capped at 4: webOS 5 links but does not play |
 | `media/smp/acb` (webos2, webos4) | 2.x, 4.x | built and symbol-verified, not yet run on a device |
-| `media/smp/webos5` | 5+ | built and symbol-verified, not yet run on a device |
+| `media/smp/webos5` | 5+ | **verified on hardware** - OLED77C5, webOS 10.3.1: exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units |
 | `media/ndl/directmedia` | 3.5+ | not written yet |
 | `media/smp/webos1` | 1.x | not written yet |
 
