@@ -54,15 +54,24 @@ static void post_load(void *self, const smp_load_params *params) {
         plane->video_width = params->video_width;
         plane->video_height = params->video_height;
     }
-}
 
-static void load_completed(void *self, const char *media_id) {
-    acb_plane *plane = self;
-    (void) media_id;
-
-    /* MAIN is the primary video plane; SUB is the picture-in-picture one. */
+    /*
+     * Attach the sink and place the window as soon as Load() has been accepted, rather
+     * than waiting for the LOADCOMPLETED event.
+     *
+     * The event is not a reliable moment to do this. On webOS 3.4 it arrives promptly, but
+     * on webOS 2.2 it does not arrive until feeding stops - so a sample that waits for it
+     * configures the video plane only after the clip has already played, and nothing is
+     * ever shown. Load() returning true is enough: the pipeline exists and has a media id,
+     * which is all ACB needs.
+     */
     AcbAPI_setSinkType(plane->acb_id, SINK_TYPE_MAIN);
     AcbAPI_setState(plane->acb_id, APPSTATE_FOREGROUND, PLAYSTATE_LOADED, &plane->task_id);
+
+    AcbAPI_setDisplayWindow(plane->acb_id, 0, 0, plane->video_width, plane->video_height,
+                            true, &plane->task_id);
+    fprintf(stderr, "[acb] display window %dx%d fullscreen\n", plane->video_width,
+            plane->video_height);
 
     pthread_mutex_lock(&plane->lock);
     plane->state_loaded = true;
@@ -74,13 +83,14 @@ static void load_completed(void *self, const char *media_id) {
         AcbAPI_setState(plane->acb_id, APPSTATE_FOREGROUND, PLAYSTATE_PLAYING,
                         &plane->task_id);
     }
+}
 
-    /* fullScreen = true lets the TV scale the plane to the panel, so the sample does not
-     * have to work out the output rectangle itself. */
-    AcbAPI_setDisplayWindow(plane->acb_id, 0, 0, plane->video_width, plane->video_height,
-                            true, &plane->task_id);
-    fprintf(stderr, "[acb] display window %dx%d fullscreen\n", plane->video_width,
-            plane->video_height);
+static void load_completed(void *self, const char *media_id) {
+    (void) self;
+    (void) media_id;
+    /* Nothing to do: post_load already attached the sink and placed the window, precisely
+     * so that this event's timing does not matter. It is left in place because the log
+     * line it produces is a useful marker of how late the pipeline really is. */
 }
 
 static void start_playing(void *self) {

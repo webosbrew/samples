@@ -38,8 +38,8 @@
 #define BUFFER_FULL_BACKOFF_NS (5 * 1000 * 1000)
 /* How long to let the decoder drain after the EOS buffers have gone in.
  *
- * Esplayer is documented to answer with NDL_ESP_END_OF_STREAM, but webOS 3.4 does not send
- * it - it goes quiet after STREAM_DRAINED_VIDEO. Since the feed loop paced everything in
+ * Esplayer is documented to answer with NDL_ESP_END_OF_STREAM, but neither webOS 2.2 nor
+ * 3.4 sends it - both go quiet after STREAM_DRAINED_VIDEO. Since the feed loop paced everything in
  * real time, the last frame's presentation time has already passed by the time we get
  * here, so this wait is insurance rather than the mechanism, and timing out is the normal
  * way for this sample to finish on that firmware. */
@@ -243,8 +243,9 @@ int main(int argc, char *argv[]) {
             pacer_sleep_ns(20 * 1000 * 1000);
         }
         fprintf(stderr, "[main] %s\n",
-                esplayer_ended(player) ? "drained on END_OF_STREAM"
-                                       : "no END_OF_STREAM (expected on webOS 3.x), unloading");
+                esplayer_ended(player)
+                        ? "drained on END_OF_STREAM"
+                        : "no END_OF_STREAM (expected on webOS 2.x-3.x), unloading");
     }
 
 teardown:

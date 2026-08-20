@@ -144,10 +144,11 @@ hard to diagnose from the TV side.
 
 | sample | webOS | state |
 |---|---|---|
-| `media/smp/acb` (webos3) | 3.x | **verified on hardware** - 43UH6100, webOS 3.4.0: full load / play / feed / EOS / unload, 300 video + 470 audio units at real-time pace |
-| `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - same TV, same clip, `FIRST_FRAME_PRESENTED` and the full 300 / 470 |
-| `media/lgnc` | 1 - 4 | **verified on hardware** - same TV, same clip, both decoders opened and the full 300 / 470. Capped at 4: webOS 5 links but does not play |
-| `media/smp/acb` (webos2, webos4) | 2.x, 4.x | built and symbol-verified, not yet run on a device |
+| `media/smp/acb` (webos3) | 3.x | verified on a 43UH6100 (webOS 3.4.0), but that run predates the ACB ordering fix below - needs one more pass to re-confirm |
+| `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): `FIRST_FRAME_PRESENTED` and the full 300 / 470 on both |
+| `media/lgnc` | 1 - 4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): both decoders opened and the full 300 / 470. Capped at 4: webOS 5 links but does not play |
+| `media/smp/acb` (webos2) | 2.x | **verified on hardware** - 55LF6310, webOS 2.2.0: the legacy `std::string` ABI and 3-argument `Load` both work, full 300 / 470 |
+| `media/smp/acb` (webos4) | 4.x | built and symbol-verified, not yet run on a device |
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
@@ -184,6 +185,11 @@ with `setupPlayback set paused done`, waiting for buffers that the app was withh
   Feeding is gated on `Load()` having returned true instead.
 - **`pushEOS()` before waiting for `ENDOFSTREAM`.** The pipeline has no other way to know
   the stream ended, so the wait otherwise always times out and the tail is cut off.
+- **Do not hang the ACB setup off `LOADCOMPLETED`.** On webOS 3.4 that event arrives
+  promptly, but on webOS 2.2 it does not arrive *until feeding stops* - so a sample that
+  waits for it attaches the video sink and places the window only after the clip has
+  already played, and nothing is ever shown. `Load()` returning true is enough: the
+  pipeline exists and has a media id, which is all ACB needs.
 - **ACB wants `LOADED` before `PLAYING`.** The triggers arrive out of order and on
   different threads - the first buffer is accepted before `LOADCOMPLETED` - so the ACB
   plane holds `PLAYING` back. Get it wrong and ACB answers
