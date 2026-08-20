@@ -11,8 +11,9 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(NDL_DIRECTMEDIA REQUIRED NDL_directmedia)
 
-# NAME is the API version, IMPL its source, MEDIA_AUDIO the audio file that version can
-# actually play, VERSIONS the firmware range for the symbol check.
+# NAME is the API version, IMPL its source, MEDIA_AUDIO the audio file(s) that version can
+# play - v1 ships both, since it accepts AAC or PCM and the choice is a launch parameter -
+# and VERSIONS the firmware range for the symbol check.
 function(directmedia_add_sample NAME IMPL MEDIA_AUDIO VERSIONS)
     set(target media-ndl-directmedia-${NAME})
 
@@ -32,8 +33,8 @@ function(directmedia_add_sample NAME IMPL MEDIA_AUDIO VERSIONS)
             APPID org.webosbrew.sample.media.ndl.directmedia.${NAME}
             TITLE "NDL DirectMedia ${NAME}"
             WEBOS_VERSIONS "${VERSIONS}"
-            MEDIA "${SAMPLE_VIDEO_ES}" "${MEDIA_AUDIO}")
+            MEDIA "${SAMPLE_VIDEO_ES}" ${MEDIA_AUDIO})
 endfunction()
 
-directmedia_add_sample(v1 directmedia_v1.c "${SAMPLE_AUDIO_ES}" ">=3.5, <5")
+directmedia_add_sample(v1 directmedia_v1.c "${SAMPLE_AUDIO_ES};${SAMPLE_AUDIO_PCM};${SAMPLE_AUDIO_AC3}" ">=3.5, <5")
 directmedia_add_sample(v2 directmedia_v2.c "${SAMPLE_AUDIO_PCM}" ">=5")

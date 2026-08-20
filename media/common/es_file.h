@@ -51,6 +51,11 @@ es_file *es_file_open_adts(const char *path);
 es_file *es_file_open_pcm_s16le(const char *path, int sample_rate, int channels,
                                 int frames_per_chunk);
 
+/* Open a raw AC-3 stream. Like ADTS it is self-framing - each frame starts with a syncword
+ * and its length is derivable from the header - so no container is needed and the sample
+ * rate and channel count are read from the stream itself. */
+es_file *es_file_open_ac3(const char *path);
+
 void es_file_close(es_file *file);
 
 /* Fills `out` with the next access unit / frame. Returns false at end of stream.

@@ -54,7 +54,9 @@ static void media_load_callback(int type, long long num_value, const char *str_v
     }
 }
 
-bool directmedia_wants_pcm_audio(void) { return true; }
+bool directmedia_requires_pcm_audio(void) { return true; }
+
+bool directmedia_prefers_pcm_audio(void) { return true; }
 
 directmedia *directmedia_create(const char *app_id) {
     directmedia *player = calloc(1, sizeof(directmedia));
@@ -86,7 +88,7 @@ bool directmedia_open(directmedia *player, const directmedia_params *params,
             },
             .audio = {
                     .pcm = {
-                            .type = NDL_AUDIO_TYPE_PCM,
+                            .type = params->has_audio ? NDL_AUDIO_TYPE_PCM : 0,
                             .format = NDL_DIRECTMEDIA_AUDIO_PCM_FORMAT_S16LE,
                             .layout = "interleaved",
                             .channelMode = params->audio_channels == 1 ? "mono" : "stereo",

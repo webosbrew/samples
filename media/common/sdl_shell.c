@@ -14,6 +14,7 @@
  * Which symbols a given firmware actually exports is not a guess - check a built ipk with
  * `webosbrew-ipk-verify`, which is what turned this one up. */
 extern SDL_bool SDL_webOSCursorVisibility(SDL_bool visible) __attribute__((weak));
+extern SDL_bool SDL_webOSGetPanelResolution(int *width, int *height) __attribute__((weak));
 #endif
 
 bool sdl_shell_preinit(void) {
@@ -74,6 +75,22 @@ bool sdl_shell_open_window(sdl_shell *shell, const char *title) {
     }
 #endif
     return true;
+}
+
+void sdl_shell_panel_size(const sdl_shell *shell, int *width, int *height) {
+#ifdef HAVE_SDL_WEBOS
+    if (SDL_webOSGetPanelResolution != NULL) {
+        int w = 0;
+        int h = 0;
+        if (SDL_webOSGetPanelResolution(&w, &h) && w > 0 && h > 0) {
+            *width = w;
+            *height = h;
+            return;
+        }
+    }
+#endif
+    *width = shell->display_width;
+    *height = shell->display_height;
 }
 
 void sdl_shell_present_transparent(sdl_shell *shell) {

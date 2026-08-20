@@ -8,10 +8,13 @@ add_library(media-common STATIC
         app_launch.c
         es_file.c
         json_scan.c
+        m3_vdec_fix.c
         pacer.c
         strbuf.c)
 
 target_include_directories(media-common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# m3_vdec_fix resolves a platform symbol at runtime.
+target_link_libraries(media-common PUBLIC ${CMAKE_DL_LIBS})
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 sdl2)

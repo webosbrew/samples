@@ -222,6 +222,19 @@ with `setupPlayback set paused done`, waiting for buffers that the app was withh
   accepted (`NDL_EsplayerFeedData` returns 0) and the decoder goes quiet after
   `STREAM_DRAINED_VIDEO`, but the documented event does not arrive. Since the feed loop
   paces in real time, the drain wait is insurance and timing out is the normal exit.
+- **Direct audio cannot decode compressed formats on some SoCs, and no jail will help.**
+  On an MStar `m3` set (49LK5900, webOS 4.4) feeding AAC or AC-3 to NDL direct audio kills
+  the app inside LG's own HAL - `HAL_AUDIO_DIRECT_Write` dereferences a null `pES3BufInfo`,
+  the elementary-stream buffer, because `/dev/adsp`, `/dev/audio` and `/dev/dsp` are not
+  visible inside the jail. PCM works, because it never touches the DSP.
+
+  Worth stating plainly, because the obvious next move is to hunt for a more privileged
+  jail: **all eleven templates in `/etc/jail_*.conf` expose zero DSP nodes** - `native`,
+  `native_builtin`, `native_game`, `native_mvpd`, `triton`, the lot. The dev-mode jail is
+  actually the most permissive of them, being the only one with `/dev/ion` and
+  `/dev/cmapool`; forcing `jailer -t native` drops those and breaks the *video* decoder as
+  well. A store-shipped app would hit the same wall. Compressed audio on this SoC is the
+  media pipeline's job, which is why the starfish samples play AAC on the very same TV.
 - **NDL DirectMedia v2 has no AAC.** Its audio types are PCM, MP3 and Opus only, so the v2
   build plays `sample.pcm` where v1 plays `sample.aac`. Opus would be far smaller on disk
   but needs Ogg pages unpacked to recover packet boundaries - demuxing, which these samples

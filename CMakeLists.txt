@@ -25,6 +25,7 @@ set(SAMPLE_VIDEO_ES "${SAMPLE_MEDIA_DIR}/sample.h264")
 set(SAMPLE_AUDIO_ES "${SAMPLE_MEDIA_DIR}/sample.aac")
 # NDL DirectMedia v2 (webOS 5+) has no AAC in its audio types, so that sample plays raw PCM.
 set(SAMPLE_AUDIO_PCM "${SAMPLE_MEDIA_DIR}/sample.pcm")
+set(SAMPLE_AUDIO_AC3 "${SAMPLE_MEDIA_DIR}/sample.ac3")
 
 add_subdirectory(media/common)
 

@@ -39,10 +39,27 @@
 
 /* How long to wait before offering a buffer the pipeline has just refused. */
 #define BUFFER_FULL_BACKOFF_NS (5 * 1000 * 1000)
+/*
+ * How many times in a row to re-offer the same access unit before giving up.
+ *
+ * Back-pressure is normal and the answer is to wait and retry - but only some of these
+ * APIs distinguish "buffer full" from "broken". NDL DirectMedia v1 in particular returns a
+ * single failure code for both, so an unbounded retry turns a hard decoder error into a
+ * silent hang with the last picture frozen on screen. Bounding it converts that into a
+ * diagnosable failure.
+ */
+#define BUFFER_FULL_MAX_RETRIES 200
 /* How long to let the decoders play out after the last access unit has gone in. */
 #define DRAIN_TIMEOUT_NS (2 * 1000000000LL)
 
 typedef struct options {
+    bool no_audio;
+    directmedia_audio_codec audio_codec;
+    bool audio_codec_set;
+    bool loop;
+    /* Set when --audio names a file, so the codec choice does not override it. */
+    bool audio_path_explicit;
+    char dir[PATH_MAX - 16];
     char video_path[PATH_MAX];
     char audio_path[PATH_MAX];
     int fps;
@@ -57,9 +74,8 @@ static void resolve_default_paths(options *opts) {
     char dir[PATH_MAX - 16];
     ssize_t len = readlink("/proc/self/exe", dir, sizeof(dir) - 1);
     if (len <= 0) {
+        snprintf(opts->dir, sizeof(opts->dir), ".");
         snprintf(opts->video_path, sizeof(opts->video_path), "sample.h264");
-        snprintf(opts->audio_path, sizeof(opts->audio_path), "%s",
-                 directmedia_wants_pcm_audio() ? "sample.pcm" : "sample.aac");
         return;
     }
     dir[len] = '\0';
@@ -67,9 +83,9 @@ static void resolve_default_paths(options *opts) {
     if (slash != NULL) {
         *slash = '\0';
     }
+    /* The audio file is chosen later, once the codec is known - see main(). */
+    snprintf(opts->dir, sizeof(opts->dir), "%s", dir);
     snprintf(opts->video_path, sizeof(opts->video_path), "%s/sample.h264", dir);
-    snprintf(opts->audio_path, sizeof(opts->audio_path), "%s/%s", dir,
-             directmedia_wants_pcm_audio() ? "sample.pcm" : "sample.aac");
 }
 
 static bool parse_options(int argc, char *argv[], options *opts) {
@@ -90,6 +106,11 @@ static bool parse_options(int argc, char *argv[], options *opts) {
             snprintf(opts->video_path, sizeof(opts->video_path), "%s", argv[++i]);
         } else if (strcmp(argv[i], "--audio") == 0 && i + 1 < argc) {
             snprintf(opts->audio_path, sizeof(opts->audio_path), "%s", argv[++i]);
+            opts->audio_path_explicit = true;
+        } else if (strcmp(argv[i], "--no-audio") == 0) {
+            opts->no_audio = true;
+        } else if (strcmp(argv[i], "--loop") == 0) {
+            opts->loop = true;
         } else if (strcmp(argv[i], "--fps") == 0 && i + 1 < argc) {
             opts->fps = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--size") == 0 && i + 1 < argc) {
@@ -99,7 +120,7 @@ static bool parse_options(int argc, char *argv[], options *opts) {
         } else {
             fprintf(stderr,
                     "usage: %s [--video sample.h264] [--audio sample.aac]\n"
-                    "          [--fps 30] [--size 1280x720]\n",
+                    "          [--fps 30] [--size 1280x720] [--no-audio] [--loop]\n",
                     argv[0]);
             return false;
         }
@@ -122,6 +143,30 @@ int main(int argc, char *argv[]) {
     }
     if (launch_params != NULL) {
         fprintf(stderr, "[main] launch params: %s\n", launch_params);
+        /* Launched from the home screen there is no command line, so the same switches
+         * have to be reachable through the launch parameters:
+         *   ares-launch -d <dev> <appid> -p '{"audio":"off"}'  */
+        char audio_opt[16];
+        if (app_launch_param_string(launch_params, "audio", audio_opt, sizeof(audio_opt))) {
+            opts.no_audio = strcmp(audio_opt, "off") == 0;
+            if (strcmp(audio_opt, "pcm") == 0) {
+                opts.audio_codec = DIRECTMEDIA_AUDIO_PCM;
+                opts.audio_codec_set = true;
+            } else if (strcmp(audio_opt, "aac") == 0) {
+                opts.audio_codec = DIRECTMEDIA_AUDIO_AAC;
+                opts.audio_codec_set = true;
+            } else if (strcmp(audio_opt, "ac3") == 0) {
+                opts.audio_codec = DIRECTMEDIA_AUDIO_AC3;
+                opts.audio_codec_set = true;
+            }
+        }
+        char loop_opt[16];
+        if (app_launch_param_string(launch_params, "loop", loop_opt, sizeof(loop_opt))) {
+            opts.loop = strcmp(loop_opt, "on") == 0;
+        }
+    }
+    if (opts.no_audio) {
+        fprintf(stderr, "[main] audio disabled by request\n");
     }
 
     /* Set by the webOS launcher for native apps. The pipeline uses it to account for the
@@ -135,11 +180,35 @@ int main(int argc, char *argv[]) {
     es_file *video = es_file_open_h264(opts.video_path, opts.fps, 1);
     /* Raw PCM carries no framing, so unlike ADTS its parameters have to be asserted rather
      * than read out of the stream. They must match what make-sample.sh produced. */
-    es_file *audio = directmedia_wants_pcm_audio()
-                             ? es_file_open_pcm_s16le(opts.audio_path, PCM_SAMPLE_RATE,
-                                                      PCM_CHANNELS, PCM_FRAMES_PER_CHUNK)
-                             : es_file_open_adts(opts.audio_path);
-    if (video == NULL || audio == NULL) {
+    directmedia_audio_codec codec = opts.audio_codec;
+    if (!opts.audio_codec_set) {
+        codec = directmedia_prefers_pcm_audio() ? DIRECTMEDIA_AUDIO_PCM : DIRECTMEDIA_AUDIO_AAC;
+    } else if (directmedia_requires_pcm_audio() && codec != DIRECTMEDIA_AUDIO_PCM) {
+        fprintf(stderr, "[main] this API version only does PCM, ignoring the codec request\n");
+        codec = DIRECTMEDIA_AUDIO_PCM;
+    }
+    static const char *const kExt[] = { "sample.pcm", "sample.aac", "sample.ac3" };
+    static const char *const kName[] = { "PCM", "AAC", "AC-3" };
+    if (!opts.audio_path_explicit) {
+        snprintf(opts.audio_path, sizeof(opts.audio_path), "%s/%s", opts.dir, kExt[codec]);
+    }
+    fprintf(stderr, "[main] audio: %s\n", opts.no_audio ? "disabled" : kName[codec]);
+    es_file *audio = NULL;
+    if (!opts.no_audio) {
+        switch (codec) {
+            case DIRECTMEDIA_AUDIO_PCM:
+                audio = es_file_open_pcm_s16le(opts.audio_path, PCM_SAMPLE_RATE, PCM_CHANNELS,
+                                               PCM_FRAMES_PER_CHUNK);
+                break;
+            case DIRECTMEDIA_AUDIO_AC3:
+                audio = es_file_open_ac3(opts.audio_path);
+                break;
+            default:
+                audio = es_file_open_adts(opts.audio_path);
+                break;
+        }
+    }
+    if (video == NULL || (!opts.no_audio && audio == NULL)) {
         es_file_close(video);
         es_file_close(audio);
         return 1;
@@ -162,12 +231,21 @@ int main(int argc, char *argv[]) {
     directmedia_params params = {
             .video_width = opts.width,
             .video_height = opts.height,
-            .audio_channels = es_file_channels(audio),
-            .audio_sample_rate = es_file_sample_rate(audio),
+            .has_audio = !opts.no_audio,
+            .audio_codec = codec,
+            .audio_channels = audio ? es_file_channels(audio) : 0,
+            .audio_sample_rate = audio ? es_file_sample_rate(audio) : 0,
     };
 
+    /* Panel coordinates, not window coordinates - see sdl_shell_panel_size. */
+    int panel_width = 0;
+    int panel_height = 0;
+    sdl_shell_panel_size(&shell, &panel_width, &panel_height);
+    fprintf(stderr, "[main] window %dx%d, panel %dx%d\n", shell.display_width,
+            shell.display_height, panel_width, panel_height);
+
     int exit_code = 0;
-    if (!directmedia_open(player, &params, shell.display_width, shell.display_height)) {
+    if (!directmedia_open(player, &params, panel_width, panel_height)) {
         exit_code = 1;
         goto teardown;
     }
@@ -186,30 +264,66 @@ int main(int argc, char *argv[]) {
     es_sample video_sample;
     es_sample audio_sample;
     bool have_video = es_file_next(video, &video_sample);
-    bool have_audio = es_file_next(audio, &audio_sample);
+    bool have_audio = audio != NULL && es_file_next(audio, &audio_sample);
     int64_t clock_origin = 0;
     long fed_video = 0;
     long fed_audio = 0;
+    int refusals = 0;
+    /* With --loop the files are read again from the start, but timestamps must not go
+     * backwards - some decoders treat that as a seek. Each pass is offset past the end of
+     * the last one. */
+    int64_t pts_offset = 0;
+    int64_t pts_last = 0;
+    long passes = 0;
 
-    while ((have_video || have_audio) && sdl_shell_pump(&shell)) {
+    while (sdl_shell_pump(&shell)) {
+        if (!have_video && !have_audio) {
+            passes++;
+            if (!opts.loop) {
+                break;
+            }
+            /* Start the next pass one frame past the end of this one. */
+            pts_offset = pts_last + 1000000000LL / opts.fps;
+            es_file_rewind(video);
+            if (audio != NULL) {
+                es_file_rewind(audio);
+            }
+            have_video = es_file_next(video, &video_sample);
+            have_audio = audio != NULL && es_file_next(audio, &audio_sample);
+            fprintf(stderr, "[main] loop pass %ld\n", passes + 1);
+            continue;
+        }
+
         bool feed_video = have_video && (!have_audio ||
                                          video_sample.pts_ns <= audio_sample.pts_ns);
         const es_sample *sample = feed_video ? &video_sample : &audio_sample;
 
+        int64_t pts = sample->pts_ns + pts_offset;
         if (clock_origin != 0) {
-            pacer_sleep_until(clock_origin, sample->pts_ns);
+            pacer_sleep_until(clock_origin, pts);
         }
 
         directmedia_feed_result result =
-                directmedia_feed(player, sample->data, sample->size, sample->pts_ns,
+                directmedia_feed(player, sample->data, sample->size, pts,
                                  feed_video ? DIRECTMEDIA_STREAM_VIDEO
                                             : DIRECTMEDIA_STREAM_AUDIO);
         if (result == DIRECTMEDIA_FEED_BUFFER_FULL) {
             /* Normal back-pressure - the pipeline's queue is full, or it is not ready yet.
              * Offer the same buffer again shortly; do not advance. */
+            if (++refusals > BUFFER_FULL_MAX_RETRIES) {
+                fprintf(stderr,
+                        "[main] %s unit %ld refused %d times in a row, giving up "
+                        "(%ld video / %ld audio fed, media time %.1f s)\n",
+                        feed_video ? "video" : "audio",
+                        feed_video ? fed_video : fed_audio, refusals, fed_video, fed_audio,
+                        (double) sample->pts_ns / 1e9);
+                exit_code = 1;
+                break;
+            }
             pacer_sleep_ns(BUFFER_FULL_BACKOFF_NS);
             continue;
         }
+        refusals = 0;
         if (result != DIRECTMEDIA_FEED_OK) {
             fprintf(stderr, "[main] feed failed, stopping\n");
             exit_code = 1;
@@ -217,7 +331,11 @@ int main(int argc, char *argv[]) {
         }
 
         if (clock_origin == 0) {
-            clock_origin = pacer_now_ns() - sample->pts_ns;
+            clock_origin = pacer_now_ns() - pts;
+        }
+        pts_last = pts;
+        if (!have_video && !have_audio) {
+            /* handled by the loop condition */
         }
         if (feed_video) {
             fed_video++;

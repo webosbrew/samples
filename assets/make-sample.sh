@@ -54,3 +54,11 @@ ffmpeg -y -i "$input" -t "$duration" \
     -f s16le "$outdir/sample.pcm"
 
 ls -la "$outdir/sample.pcm"
+
+# AC-3 as well. Every one of these media APIs takes it except NDL DirectMedia v2, and it is
+# self-framing like ADTS, so the samples can walk it without a container.
+ffmpeg -y -i "$input" -t "$duration" \
+    -vn -c:a ac3 -ar 48000 -ac 2 -b:a 192k \
+    -f ac3 "$outdir/sample.ac3"
+
+ls -la "$outdir/sample.ac3"

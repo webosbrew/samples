@@ -13,6 +13,7 @@ typedef enum es_kind {
     ES_H264,
     ES_ADTS,
     ES_PCM,
+    ES_AC3,
 } es_kind;
 
 struct es_file {
@@ -260,6 +261,80 @@ es_file *es_file_open_adts(const char *path) {
     return file;
 }
 
+/* ---------------------------------------------------------------------- AC-3 */
+
+/* Frame length in 16-bit words, indexed by frmsizecod, one row per fscod (48/44.1/32 kHz).
+ * Straight out of the AC-3 spec's syncinfo table - there is no way to compute it. */
+static const unsigned short ac3_frame_words[3][38] = {
+        {64, 64, 80, 80, 96, 96, 112, 112, 128, 128, 160, 160, 192, 192, 224, 224, 256, 256,
+         320, 320, 384, 384, 448, 448, 512, 512, 640, 640, 768, 768, 896, 896, 1024, 1024,
+         1152, 1152, 1280, 1280},
+        {69, 70, 87, 88, 104, 105, 121, 122, 139, 140, 174, 175, 208, 209, 243, 244, 278,
+         279, 348, 349, 417, 418, 487, 488, 557, 558, 696, 697, 835, 836, 975, 976, 1114,
+         1115, 1253, 1254, 1393, 1394},
+        {96, 96, 120, 120, 144, 144, 168, 168, 192, 192, 240, 240, 288, 288, 336, 336, 384,
+         384, 480, 480, 576, 576, 672, 672, 768, 768, 960, 960, 1152, 1152, 1344, 1344, 1536,
+         1536, 1728, 1728, 1920, 1920},
+};
+static const int ac3_sample_rates[3] = { 48000, 44100, 32000 };
+/* Channel count per acmod. LFE is not added in - the samples use stereo content, and a
+ * player that cares would also have to decode lfeon, whose bit position moves with acmod. */
+static const int ac3_acmod_channels[8] = { 2, 1, 2, 3, 3, 4, 4, 5 };
+
+static size_t ac3_parse(const es_file *file, size_t off, int *sample_rate, int *channels) {
+    if (off + 7 > file->size) {
+        return 0;
+    }
+    const uint8_t *h = file->base + off;
+    if (h[0] != 0x0b || h[1] != 0x77) {
+        return 0;
+    }
+    int fscod = (h[4] >> 6) & 0x03;
+    int frmsizecod = h[4] & 0x3f;
+    if (fscod > 2 || frmsizecod > 37) {
+        return 0;
+    }
+    size_t length = (size_t) ac3_frame_words[fscod][frmsizecod] * 2;
+    if (off + length > file->size) {
+        return 0;
+    }
+    if (sample_rate != NULL) {
+        *sample_rate = ac3_sample_rates[fscod];
+    }
+    if (channels != NULL) {
+        *channels = ac3_acmod_channels[(h[6] >> 5) & 0x07];
+    }
+    return length;
+}
+
+static bool ac3_next(es_file *file, es_sample *out) {
+    size_t length = ac3_parse(file, file->pos, NULL, NULL);
+    if (length == 0) {
+        return false;
+    }
+    out->data = file->base + file->pos;
+    out->size = length;
+    /* Every AC-3 frame carries exactly 1536 samples. */
+    out->pts_ns = file->index * 1536 * 1000000000LL / file->sample_rate;
+
+    file->pos += length;
+    file->index++;
+    return true;
+}
+
+es_file *es_file_open_ac3(const char *path) {
+    es_file *file = es_file_map(path, ES_AC3);
+    if (file == NULL) {
+        return NULL;
+    }
+    if (ac3_parse(file, 0, &file->sample_rate, &file->channels) == 0) {
+        fprintf(stderr, "es_file: %s does not start with an AC-3 syncword\n", path);
+        es_file_close(file);
+        return NULL;
+    }
+    return file;
+}
+
 /* ---------------------------------------------------------------------- PCM */
 
 static bool pcm_next(es_file *file, es_sample *out) {
@@ -311,6 +386,8 @@ bool es_file_next(es_file *file, es_sample *out) {
             return adts_next(file, out);
         case ES_PCM:
             return pcm_next(file, out);
+        case ES_AC3:
+            return ac3_next(file, out);
         default:
             return false;
     }

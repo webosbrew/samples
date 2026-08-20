@@ -38,9 +38,24 @@ typedef enum directmedia_feed_result {
     DIRECTMEDIA_FEED_ERROR,
 } directmedia_feed_result;
 
+typedef enum directmedia_audio_codec {
+    DIRECTMEDIA_AUDIO_PCM,
+    DIRECTMEDIA_AUDIO_AAC,
+    DIRECTMEDIA_AUDIO_AC3,
+} directmedia_audio_codec;
+
 typedef struct directmedia_params {
     int video_width;
     int video_height;
+
+    /* Audio can be left out entirely. Opening one decoder at a time is the first thing
+     * worth trying when a platform crashes inside its own HAL: it says whether the
+     * problem is the stream, the API usage, or that path specifically. */
+    bool has_audio;
+    /* v1 accepts all three; v2 has only PCM (no AAC, no AC-3) and ignores this. Worth
+     * being able to switch: some MStar sets crash inside the audio HAL on one codec and
+     * are perfectly happy on another. */
+    directmedia_audio_codec audio_codec;
     int audio_channels;
     int audio_sample_rate;
 } directmedia_params;
@@ -64,5 +79,10 @@ void directmedia_close(directmedia *player);
  * answers false. */
 bool directmedia_ended(directmedia *player);
 
-/* Which audio file main.c should open. Differs by API version, see the note above. */
-bool directmedia_wants_pcm_audio(void);
+/* Whether this API version can only do PCM. v2 can; v1 accepts AAC too, so it merely
+ * prefers AAC and lets the caller override. */
+bool directmedia_requires_pcm_audio(void);
+
+/* Whether PCM is the sensible default even where other codecs are accepted. See the long
+ * note in directmedia_v1.c: compressed audio crashes the audio HAL on some MStar sets. */
+bool directmedia_prefers_pcm_audio(void);
