@@ -145,9 +145,9 @@ hard to diagnose from the TV side.
 | sample | webOS | state |
 |---|---|---|
 | `media/smp/acb` (webos3) | 3.x | verified on a 43UH6100 (webOS 3.4.0), but that run predates the ordering fixes below - re-run pending |
-| `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): `FIRST_FRAME_PRESENTED` and the full 300 / 470 on both |
-| `media/lgnc` | 1 - 4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): both decoders opened and the full 300 / 470. Capped at 4: webOS 5 links but does not play |
-| `media/smp/acb` (webos2) | 2.x | **verified on hardware** - 55LF6310, webOS 2.2.0: the legacy `std::string` ABI and 3-argument `Load` both work, full 300 / 470, ACB reaching PLAYING before playback |
+| `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): `FIRST_FRAME_PRESENTED` and the full 300 / 470 on both, confirmed smooth on screen |
+| `media/lgnc` | 1 - 4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): both decoders opened and the full 300 / 470, confirmed smooth on screen. Capped at 4: webOS 5 links but does not play |
+| `media/smp/acb` (webos2) | 2.x | **verified on hardware** - 55LF6310, webOS 2.2.0: the legacy `std::string` ABI and 3-argument `Load` both work, full 300 / 470, ACB reaching PLAYING before playback, and confirmed playing through on screen |
 | `media/smp/acb` (webos4) | 4.x | built and symbol-verified, not yet run on a device |
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
