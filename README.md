@@ -42,9 +42,15 @@ it is not.
 | build variants needed | 4 | 1 per API generation | none |
 | in the SDK | yes | only the 3.5+ half | yes |
 
-LGNC is the smallest API of the three and the only one that reaches webOS 1 - but it hands
-back no timing information whatsoever, so keeping audio and video together is entirely the
-caller's job.
+LGNC is the smallest API of the three and the only one that claims to reach webOS 1 - but
+it hands back no timing information whatsoever, so keeping audio and video together is
+entirely the caller's job.
+
+Both ends of that range deserve a caveat, for the same reason. The upper one is known
+wrong-if-trusted; the lower one is simply untested. Every symbol the sample uses is present
+in a webOS 1.2 dump, but no webOS 1 hardware was available, and this repo has already been
+bitten once by treating symbol presence as proof. Read "webOS 1" as *should work*, and
+"webOS 2 to 4" as *seen working*.
 
 Its upper bound is a trap. webOS 5 still exports the entire LGNC API, so a build targeting
 it links and passes `-verify` - but playback is broken there in practice. The library is
@@ -146,13 +152,13 @@ hard to diagnose from the TV side.
 |---|---|---|
 | `media/smp/acb` (webos3) | 3.x | verified on a 43UH6100 (webOS 3.4.0), but that run predates the ordering fixes below - re-run pending |
 | `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): `FIRST_FRAME_PRESENTED` and the full 300 / 470 on both, confirmed smooth on screen |
-| `media/lgnc` | 1 - 4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): both decoders opened and the full 300 / 470, confirmed smooth on screen. Capped at 4: webOS 5 links but does not play |
+| `media/lgnc` | 1 - 4 (1.x unverified) | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): both decoders opened and the full 300 / 470, confirmed smooth on screen. Capped at 4: webOS 5 links but does not play |
 | `media/smp/acb` (webos2) | 2.x | **verified on hardware** - 55LF6310, webOS 2.2.0: the legacy `std::string` ABI and 3-argument `Load` both work, full 300 / 470, ACB reaching PLAYING before playback, and confirmed playing through on screen |
 | `media/smp/acb` (webos4) | 4.x | built and symbol-verified, not yet run on a device |
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
-| `media/smp/webos1` | 1.x | not written yet |
+| `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 
 ## Debugging on a device
 
