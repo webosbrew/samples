@@ -141,6 +141,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    pacer_uptime_ms(); /* start the clock */
     sdl_shell shell;
     if (!sdl_shell_preinit() || !sdl_shell_open_window(&shell, "SMP ACB")) {
         return 1;
@@ -148,6 +149,7 @@ int main(int argc, char *argv[]) {
     /* Clear to transparent once, up front: from here on the screen belongs to the video
      * plane, and the sample has nothing of its own to draw. */
     sdl_shell_present_transparent(&shell);
+    fprintf(stderr, "[main @%.0fms] SDL window up\n", pacer_uptime_ms());
 
     acb_plane acb;
     if (!acb_plane_init(&acb, &shell, app_id, opts.width, opts.height)) {
@@ -168,6 +170,7 @@ int main(int argc, char *argv[]) {
     smp_load_params params = {
             .app_id = app_id,
             .pause_at_decode_time = SMP_PAUSE_AT_DECODE_TIME,
+            .low_latency = true,
             .has_video = true,
             .video_codec = "H264",
             .video_width = opts.width,
@@ -181,6 +184,7 @@ int main(int argc, char *argv[]) {
             .aac_object_type = es_file_aac_object_type(audio),
     };
 
+    fprintf(stderr, "[main @%.0fms] calling Load\n", pacer_uptime_ms());
     int exit_code = 0;
     if (!smp_player_load(player, &params)) {
         exit_code = 1;

@@ -9,6 +9,15 @@ int64_t pacer_now_ns(void) {
     return (int64_t) now.tv_sec * 1000000000LL + now.tv_nsec;
 }
 
+double pacer_uptime_ms(void) {
+    static int64_t origin = 0;
+    int64_t now = pacer_now_ns();
+    if (origin == 0) {
+        origin = now;
+    }
+    return (double) (now - origin) / 1e6;
+}
+
 void pacer_sleep_ns(int64_t duration_ns) {
     if (duration_ns <= 0) {
         return;

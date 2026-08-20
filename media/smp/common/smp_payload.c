@@ -16,6 +16,13 @@
 #define SMP_SRC_BUFFER_AUDIO_MAX (1 * 1024 * 1024)
 #define SMP_SRC_BUFFER_MIN 1024
 
+/* The low-latency pair. Small enough that the pipeline cannot sit on a backlog, which is
+ * the whole point: it starts rendering as soon as there is something to render. These are
+ * the levels a low-latency streaming client uses, and unlike the newer options below they
+ * are recognised on every generation. */
+#define SMP_SRC_BUFFER_VIDEO_MAX_LOW (1 * 1024 * 1024)
+#define SMP_SRC_BUFFER_AUDIO_MAX_LOW (32 * 1024)
+
 bool smp_payload_load(char *out, size_t out_len, const smp_load_params *params) {
     strbuf sb;
     strbuf_init(&sb, out, out_len);
@@ -97,6 +104,23 @@ bool smp_payload_load(char *out, size_t out_len, const smp_load_params *params) 
     strbuf_addf(&sb, "}");/* bufferingCtrInfo */
 
     strbuf_addf(&sb, "}");/* externalStreamingInfo */
+
+    if (params->low_latency) {
+        /*
+         * Of the three low-latency levers, only the buffer levels above are universal.
+         * These two are newer, and it is worth knowing which firmware ignores them rather
+         * than assuming they help: libpf on the TV contains the complete list of option
+         * paths it parses, so
+         *
+         *     strings /usr/lib/libpf-1.0.so.1.0.0 | grep '^option\.'
+         *
+         * answers the question directly. On webOS 4.4 that list has no "lowDelayMode" at
+         * all, and no "WEBRTC" string for contentsType to match - so both are inert there,
+         * which is exactly what measuring showed: first picture at 950ms either way.
+         */
+        strbuf_addf(&sb, ",\"transmission\":{\"contentsType\":\"WEBRTC\"}");
+        strbuf_addf(&sb, ",\"lowDelayMode\":true");
+    }
 
     if (params->has_video) {
         /* Tells the decoder the ceiling it must be able to handle, so it can reserve the

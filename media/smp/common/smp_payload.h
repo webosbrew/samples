@@ -32,6 +32,14 @@ typedef struct smp_load_params {
      * stays as it is. */
     bool pause_at_decode_time;
 
+    /* Ask the pipeline to start showing pictures as soon as it can, rather than filling a
+     * buffer first. Costs resilience - there is nothing in hand if the source stalls - so
+     * it suits a local file or a live stream, not a network player riding out jitter.
+     *
+     * Only partly effective, and only on newer firmware. See smp_payload.c: of the three
+     * things it changes, webOS 4's player-factory recognises just one. */
+    bool low_latency;
+
     bool has_video;
     const char *video_codec; /* "H264", "H265", "AV1" */
     int video_width;

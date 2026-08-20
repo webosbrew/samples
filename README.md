@@ -209,6 +209,57 @@ argument:
   working NDL run.
 - **`Play()` returning true** - as above.
 
+## The TV tells you which Load options it understands
+
+`libpf` (player-factory) contains the full list of option paths it parses, so there is no
+need to guess whether a payload field does anything:
+
+```sh
+strings /usr/lib/libpf-1.0.so.1.0.0 | grep '^option\.' | sort
+```
+
+On a webOS 4.4 set that prints about a hundred paths - the whole `externalStreamingInfo`
+tree, `adaptiveStreaming`, `transmission`, `drm`, and a `bufferControl` block that is not
+in any of the reverse-engineered notes:
+
+```
+option.bufferControl.preBufferTime
+option.bufferControl.bufferingMinTime
+option.bufferControl.bufferingMaxTime
+option.bufferControl.userBufferCtrl
+```
+
+It is equally useful for what is *absent*. `lowDelayMode` does not appear at all on
+webOS 4.4, and neither does `WEBRTC` for `transmission.contentsType` to match, so both are
+silently ignored there - measuring startup with and without them gave the same 950 ms
+either way. Only the `srcBufferLevel*` limits are recognised across every generation.
+
+The same library also explains why the startup wait has a floor:
+
+```
+preBufferTime < 3 secs use default preBufferTime
+```
+
+Asking for less than three seconds gets you the default, so that particular wait cannot be
+tuned away from the payload.
+
+### Where the startup time actually goes
+
+The samples timestamp their milestones, because "how long until a picture appears" is not
+the same question as "how late is a frame against its own timestamp" - and the second one
+is easy to mistake for the first:
+
+```
+[main @68ms]  SDL window up
+[main @102ms] calling Load
+[smp @352ms]  Play() -> accepted
+[smp @685ms]  load completed
+[smp @950ms]  first picture on screen, its pts 0.13s
+```
+
+Most of it is pipeline creation and resource acquisition between `Load` and `load
+completed` - roughly 580 ms on a 49LK5900 - which no payload field shortens.
+
 ## Debugging on a device
 
 Two things make a native webOS app hard to debug, and both are handled by the samples:

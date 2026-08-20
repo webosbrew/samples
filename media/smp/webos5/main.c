@@ -160,6 +160,7 @@ int main(int argc, char *argv[]) {
     smp_load_params params = {
             .app_id = app_id,
             .pause_at_decode_time = SMP_PAUSE_AT_DECODE_TIME,
+            .low_latency = true,
             .has_video = true,
             .video_codec = "H264",
             .video_width = opts.width,

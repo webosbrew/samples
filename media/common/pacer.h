@@ -16,6 +16,11 @@ int64_t pacer_now_ns(void);
 
 void pacer_sleep_ns(int64_t duration_ns);
 
+/* Milliseconds since the first call, which the samples make at startup. Used to timestamp
+ * the log so it is obvious where the wait before playback actually goes - pipeline
+ * creation, resource acquisition, or decoding the first picture. */
+double pacer_uptime_ms(void);
+
 /* Sleeps until `start_ns + pts_ns`. Returns immediately if that moment has passed, so a
  * sample that falls behind catches up rather than accumulating delay. */
 void pacer_sleep_until(int64_t start_ns, int64_t pts_ns);

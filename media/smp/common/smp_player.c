@@ -82,7 +82,8 @@ static void ensure_playing(smp_player *player) {
     }
 
     bool ok = smp_api_play(player->api);
-    fprintf(stderr, "[smp] Play() -> %s\n", ok ? "accepted" : "refused, will retry");
+    fprintf(stderr, "[smp @%.0fms] Play() -> %s\n", pacer_uptime_ms(),
+            ok ? "accepted" : "refused, will retry");
     if (!ok) {
         return;
     }
@@ -161,7 +162,7 @@ bool smp_player_load(smp_player *player, const smp_load_params *params) {
         fprintf(stderr, "[smp] Load payload does not fit in %d bytes\n", SMP_LOAD_PAYLOAD_MAX);
         return false;
     }
-    fprintf(stderr, "[smp] Load(%s)\n", payload);
+    fprintf(stderr, "[smp @%.0fms] Load(%s)\n", pacer_uptime_ms(), payload);
 
     if (!smp_api_load(player->api, payload, load_callback, player)) {
         fprintf(stderr, "[smp] Load failed\n");
@@ -280,7 +281,8 @@ static void load_callback(int type, int64_t num_value, const char *str_value, vo
             pthread_mutex_unlock(&player->lock);
 
             const char *media_id = smp_api_media_id(player->api);
-            fprintf(stderr, "[smp] load completed, mediaId=%s\n", media_id ? media_id : "(none)");
+            fprintf(stderr, "[smp @%.0fms] load completed, mediaId=%s\n", pacer_uptime_ms(),
+                    media_id ? media_id : "(none)");
             player->plane.load_completed(player->plane.self, media_id);
             /*
              * Unconditionally, even if Play() has already been issued and accepted.
@@ -304,10 +306,22 @@ static void load_callback(int type, int64_t num_value, const char *str_value, vo
             int64_t start = player->start_ns;
             int64_t n = player->frames_rendered++;
             pthread_mutex_unlock(&player->lock);
+            if (n == 0) {
+                /* The first picture to reach the screen. Its own timestamp says how much
+                 * of the stream the pipeline swallowed before showing anything - that is
+                 * the startup wait a viewer actually sees, and it is not the same as how
+                 * late the frame is against the feed clock. */
+                fprintf(stderr, "[smp @%.0fms] first picture on screen, its pts %.2fs "
+                                "(so %.2fs of media went by unseen)\n",
+                        pacer_uptime_ms(), (double) num_value / 1e9,
+                        (double) num_value / 1e9);
+            }
             if (start != 0 && n % 120 == 0) {
                 int64_t elapsed = pacer_now_ns() - start;
-                fprintf(stderr, "[smp] frame %lld rendered, %.1f ms behind feed clock\n",
-                        (long long) n, (double) (elapsed - num_value) / 1e6);
+                fprintf(stderr, "[smp @%.0fms] frame %lld rendered, %.1f ms behind feed "
+                                "clock\n",
+                        pacer_uptime_ms(), (long long) n,
+                        (double) (elapsed - num_value) / 1e6);
             }
             break;
         }
