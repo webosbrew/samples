@@ -2,7 +2,7 @@
 #               APPID <com.example.app>
 #               TITLE <"Human Readable">
 #               [VERSION <1.0.0>]
-#               [ICON <path/to/icon.png>]   defaults to assets/icon.png
+#               [ICON <path/to/icon.png>]   defaults to assets/icons/<target minus media->.png
 #               [COLOR <#rrggbb>]           written to both appinfo iconColor and bgColor.
 #                                           iconColor fills behind the icon - without it the
 #                                           launcher default shows through the icon's
@@ -37,10 +37,11 @@ function(webos_add_ipk)
     if (NOT IPK_VERSION)
         set(IPK_VERSION "1.0.0")
     endif ()
-    # One icon for every sample: a play mark on transparency. What distinguishes them on
-    # the home screen is COLOR below, which webOS paints behind it.
+    # Icons are white artwork on transparency, named after the target; the colour behind
+    # them comes from COLOR below, which webOS paints itself.
     if (NOT IPK_ICON)
-        set(IPK_ICON "${CMAKE_SOURCE_DIR}/assets/icon.png")
+        string(REGEX REPLACE "^media-" "" _icon_name "${IPK_TARGET}")
+        set(IPK_ICON "${CMAKE_SOURCE_DIR}/assets/icons/${_icon_name}.png")
     endif ()
     if (NOT EXISTS "${IPK_ICON}")
         message(FATAL_ERROR "No icon at ${IPK_ICON} - run assets/make-icon.py")

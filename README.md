@@ -104,8 +104,8 @@ and skips everything else.
 
 ### Icons
 
-`assets/icon.png` is just a play mark on transparency, shared by every sample - the colour
-is not in the PNG. Each sample passes a Material 500 colour to `webos_add_ipk`, which
+`assets/icons/<name>.png` carries white artwork on transparency - the API name, a play
+mark, and which variant it is - and no colour at all. Each sample passes a Material 500 colour to `webos_add_ipk`, which
 writes it to both `iconColor` and `bgColor` in `appinfo.json`, and webOS paints that behind
 the glyph. Families are grouped by hue: blues for starfish, greens for NDL, orange for
 LGNC.
