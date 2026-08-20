@@ -22,6 +22,16 @@ typedef struct smp_load_params {
      * luna calls) - the key is then omitted entirely. */
     const char *window_id;
 
+    /* esInfo.pauseAtDecodeTime: hold the first decoded picture until ptsToDecode is
+     * reached. True on every generation that has been made to work.
+     *
+     * It was suspected of causing the webOS 4.4 failure, because the pipeline prints
+     * "prerolling state (play command pending)" right after parsing it. Setting it false
+     * there changed the symptom - a delay, then a single frame, then exit, instead of an
+     * immediate freeze - but did not fix it, so the suspicion is unproven and the default
+     * stays as it is. */
+    bool pause_at_decode_time;
+
     bool has_video;
     const char *video_codec; /* "H264", "H265", "AV1" */
     int video_width;

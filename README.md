@@ -154,11 +154,42 @@ hard to diagnose from the TV side.
 | `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): `FIRST_FRAME_PRESENTED` and the full 300 / 470 on both, confirmed smooth on screen |
 | `media/lgnc` | 1 - 4 (1.x unverified) | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): both decoders opened and the full 300 / 470, confirmed smooth on screen. Capped at 4: webOS 5 links but does not play |
 | `media/smp/acb` (webos2) | 2.x | **verified on hardware** - 55LF6310, webOS 2.2.0: the legacy `std::string` ABI and 3-argument `Load` both work, full 300 / 470, ACB reaching PLAYING before playback, and confirmed playing through on screen |
-| `media/smp/acb` (webos4) | 4.x | built and symbol-verified, not yet run on a device |
+| `media/smp/acb` (webos4) | 4.x | built and symbol-verified. **Does not play on a 49LK5900 (webOS 4.4)** - cause unknown, see below |
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
+
+## The webOS 4 ACB sample does not work, and here is everything known
+
+`media-smp-acb-webos4` reaches the end of its own sequence on a 49LK5900 and still shows
+only a frozen first frame. Recorded here so the next attempt does not start from zero.
+
+What is verified correct: ACB binds to the media id, the display window is set, ACB reports
+`LOADED` then `PLAYING`, `Play()` is accepted, all 300 video and 470 audio units are fed,
+and the pipeline's own `pushDataIntoGstPipeline` shows both streams arriving with correct
+interleaved timestamps. Teardown is clean. The same code plays on webOS 2.2, 3.4, 6.5 and
+10.3.
+
+The one signal with no innocent explanation is that the pipeline logs
+`prerolling state (play command pending)` after `Play()`, and never leaves `LoadingState`.
+
+Things that looked like the cause and are not:
+
+- **`checkAppSrcBuffer: not Play State`** - YouTube prints this continuously while playing
+  perfectly well on the same TV. It is noise.
+- **`surface-manager LSM: client doesn't have enough permission`** - also present during a
+  *working* NDL run. Noise.
+- **`Play()` returning true** - means the call was accepted, not that playback started. The
+  pipeline can and does queue it.
+- **ACB registration leaks** - real, and worth fixing (see below), but clearing them does
+  not fix playback.
+- **`esInfo.pauseAtDecodeTime`** - setting it false changes the symptom (a delay, one
+  frame, then exit) but does not fix it.
+
+Untried leads: `AcbAPI_setVsmInfo`, which the TV exports but the SDK header does not
+declare; and `AcbAPI_initialize`'s player type, currently `PLAYER_TYPE_MSE` - the ACB error
+text refers to it as `purpose(1)`.
 
 ## Debugging on a device
 
@@ -172,14 +203,29 @@ ares-launch -d <device> org.webosbrew.sample.media.smp.acb.webos3 -p '{"log":"/t
 ssh root@<device> cat /tmp/smp.log
 ```
 
+**A killed run poisons the next one.** ACB registrations outlive the process. If an app is
+killed rather than exiting cleanly, the next run is refused with
+`ACB object was already registered ...` in `acb-client.error`, and shows a black screen or
+a frozen frame while its own logs look perfect. Recover with `restart AcbService` on the TV
+- a reboot works too but is not necessary. The samples install a SIGTERM/SIGINT handler to
+avoid leaking in the first place.
+
+**PmLog contexts are per-process.** Levels set with `PmLogCtl` apply to processes that
+register them *afterwards*, so raising a level and then relaunching the app is required -
+and a level raised for one run will not necessarily be in force for the next.
+
 **The pipeline logs separately.** `libplayerAPIs` logs through PmLog, off by default. Turn
 it up *while the app is running* - contexts are registered by the live process, so setting
 them beforehand does not stick:
 
 ```sh
-for c in smp.api smp.main smp.rm playerfactory.default; do PmLogCtl set $c debug; done
+for c in smp.api smp.main smp.rm playerfactory.default playerfactory.feed \
+         acb-client.error acb-client.info acb-svc.info NEWVSM; do PmLogCtl set $c debug; done
 tail -f /var/log/messages | grep -v updatePeriodicalInfo
 ```
+
+`acb-client.error` in particular is worth having on: it is the only place the ACB service
+explains a refusal. That is how the registration leak above was found.
 
 That is how the load deadlock described below was found: the pipeline sat in `LoadingState`
 with `setupPlayback set paused done`, waiting for buffers that the app was withholding.

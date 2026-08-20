@@ -1,9 +1,16 @@
 #include "acb_plane.h"
 
+#include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <AcbAPI.h>
+
+#ifndef ACB_ATTACH_SINK_EARLY
+#define ACB_ATTACH_SINK_EARLY 0
+#endif
 
 /*
  * The SDK header declares
@@ -28,6 +35,29 @@
 extern int acb_set_media_video_data(long acb_id, const char *payload, long *task_id)
         __asm__("AcbAPI_setMediaVideoData");
 
+/*
+ * ACB registrations outlive the process that made them.
+ *
+ * If an app dies without calling AcbAPI_finalize - killed, crashed, or shut down by a
+ * service restart - the ACB service keeps the registration, and the *next* run is refused
+ * with "ACB object was already registered or sinkType(0) or purpose(1) is not valid" in
+ * acb-client.error. The symptom is a black screen or a frozen first frame in a run whose
+ * own logs look perfect, which is a thoroughly confusing thing to debug.
+ *
+ * Recovering by hand is `restart AcbService` on the TV; a reboot also works but is not
+ * needed. Better to not leak in the first place, hence this handler.
+ */
+static long g_acb_id_for_cleanup = 0;
+
+static void acb_cleanup_on_signal(int sig) {
+    if (g_acb_id_for_cleanup != 0) {
+        AcbAPI_finalize(g_acb_id_for_cleanup);
+        AcbAPI_destroy(g_acb_id_for_cleanup);
+        g_acb_id_for_cleanup = 0;
+    }
+    _exit(128 + sig);
+}
+
 static void acb_callback(long acb_id, long task_id, long event_type, long app_state,
                          long play_state, const char *reply) {
     fprintf(stderr, "[acb] acbId=%ld taskId=%ld event=%ld appState=%ld playState=%ld %s\n",
@@ -48,30 +78,25 @@ static void set_media_id(void *self, const char *media_id) {
     fprintf(stderr, "[acb] bound to mediaId %s\n", media_id);
 }
 
-static void post_load(void *self, const smp_load_params *params) {
-    acb_plane *plane = self;
-    if (params->has_video) {
-        plane->video_width = params->video_width;
-        plane->video_height = params->video_height;
-    }
-
-    /*
-     * Attach the sink and place the window as soon as Load() has been accepted, rather
-     * than waiting for the LOADCOMPLETED event.
-     *
-     * The event is not a reliable moment to do this. On webOS 3.4 it arrives promptly, but
-     * on webOS 2.2 it does not arrive until feeding stops - so a sample that waits for it
-     * configures the video plane only after the clip has already played, and nothing is
-     * ever shown. Load() returning true is enough: the pipeline exists and has a media id,
-     * which is all ACB needs.
-     */
+/*
+ * Attach the video sink and declare the pipeline loaded.
+ *
+ * When this may be called is generation-dependent, and the two ends disagree:
+ *
+ *   webOS 3 and 4  Only after LOADCOMPLETED. Calling it as soon as Load() returns makes
+ *                  ACB's setState hang and then fail with "Timeout To Receive Luna API
+ *                  Response" on luna://com.webos.service.videosinkmanager/connect - the
+ *                  sink never attaches and the screen stays black.
+ *   webOS 2        LOADCOMPLETED does not arrive until feeding stops, so waiting for it
+ *                  means the sink attaches after the clip has already played.
+ *
+ * So webOS 2 gets ACB_ATTACH_SINK_EARLY and everyone else follows the order ss4s uses.
+ * Note that setDisplayWindow is *not* part of this: ss4s issues that right after Load()
+ * returns on every generation, and it works.
+ */
+static void attach_sink(acb_plane *plane) {
     AcbAPI_setSinkType(plane->acb_id, SINK_TYPE_MAIN);
     AcbAPI_setState(plane->acb_id, APPSTATE_FOREGROUND, PLAYSTATE_LOADED, &plane->task_id);
-
-    AcbAPI_setDisplayWindow(plane->acb_id, 0, 0, plane->video_width, plane->video_height,
-                            true, &plane->task_id);
-    fprintf(stderr, "[acb] display window %dx%d fullscreen\n", plane->video_width,
-            plane->video_height);
 
     pthread_mutex_lock(&plane->lock);
     plane->state_loaded = true;
@@ -85,12 +110,31 @@ static void post_load(void *self, const smp_load_params *params) {
     }
 }
 
+static void post_load(void *self, const smp_load_params *params) {
+    acb_plane *plane = self;
+    if (params->has_video) {
+        plane->video_width = params->video_width;
+        plane->video_height = params->video_height;
+    }
+
+    AcbAPI_setDisplayWindow(plane->acb_id, 0, 0, plane->video_width, plane->video_height,
+                            true, &plane->task_id);
+    fprintf(stderr, "[acb] display window %dx%d fullscreen\n", plane->video_width,
+            plane->video_height);
+
+#if ACB_ATTACH_SINK_EARLY
+    attach_sink(plane);
+#endif
+}
+
 static void load_completed(void *self, const char *media_id) {
-    (void) self;
     (void) media_id;
-    /* Nothing to do: post_load already attached the sink and placed the window, precisely
-     * so that this event's timing does not matter. It is left in place because the log
-     * line it produces is a useful marker of how late the pipeline really is. */
+#if ACB_ATTACH_SINK_EARLY
+    (void) self;
+    /* Already done in post_load - see attach_sink. */
+#else
+    attach_sink((acb_plane *) self);
+#endif
 }
 
 static void start_playing(void *self) {
@@ -145,6 +189,9 @@ bool acb_plane_init(acb_plane *plane, sdl_shell *shell, const char *app_id, int 
         plane->acb_id = 0;
         return false;
     }
+    g_acb_id_for_cleanup = plane->acb_id;
+    signal(SIGTERM, acb_cleanup_on_signal);
+    signal(SIGINT, acb_cleanup_on_signal);
     return true;
 }
 
@@ -167,6 +214,7 @@ void acb_plane_destroy(acb_plane *plane) {
     }
     AcbAPI_finalize(plane->acb_id);
     AcbAPI_destroy(plane->acb_id);
+    g_acb_id_for_cleanup = 0;
     plane->acb_id = 0;
     pthread_mutex_destroy(&plane->lock);
 }

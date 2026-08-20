@@ -19,6 +19,12 @@ function(acb_add_sample NAME COMMON VERSIONS)
     set(target media-smp-acb-${NAME})
 
     add_executable(${target} main.c acb_plane.c)
+    if (NAME STREQUAL "webos2")
+        # webOS 2.2 delivers LOADCOMPLETED only once feeding stops, so the sink has to be
+        # attached as soon as Load() returns. Every later generation rejects that - see
+        # attach_sink() in acb_plane.c.
+        target_compile_definitions(${target} PRIVATE ACB_ATTACH_SINK_EARLY=1)
+    endif ()
     target_include_directories(${target} SYSTEM PRIVATE ${ACBAPI_INCLUDE_DIRS})
     target_link_directories(${target} PRIVATE ${ACBAPI_LIBRARY_DIRS})
     target_link_libraries(${target} PRIVATE ${COMMON} media-common-sdl ${ACBAPI_LIBRARIES})

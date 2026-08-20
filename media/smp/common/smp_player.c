@@ -66,16 +66,29 @@ static void load_callback(int type, int64_t num_value, const char *str_value, vo
  *
  * So whichever happens first wins - the event, or the first buffer the pipeline accepts.
  * By then Load() has returned true and data is flowing, which is enough.
+ *
+ * But "first" is not always "accepted": webOS 4.4 refuses an early Play() and only takes
+ * one after LOADCOMPLETED, so the call is only recorded as done when it actually returns
+ * true. Marking it done regardless leaves the pipeline sitting in its loading state
+ * forever - visible in the platform log as a stream of
+ * "checkAppSrcBuffer: not Play State" while every buffer is still being accepted.
  */
 static void ensure_playing(smp_player *player) {
     pthread_mutex_lock(&player->lock);
     bool issue = !player->play_issued;
+    pthread_mutex_unlock(&player->lock);
+    if (!issue) {
+        return;
+    }
+
+    bool ok = smp_api_play(player->api);
+    fprintf(stderr, "[smp] Play() -> %s\n", ok ? "ok" : "refused, will retry");
+    if (!ok) {
+        return;
+    }
+    pthread_mutex_lock(&player->lock);
     player->play_issued = true;
     pthread_mutex_unlock(&player->lock);
-
-    if (issue) {
-        smp_api_play(player->api);
-    }
 }
 
 smp_player *smp_player_create(const smp_video_plane *plane) {
@@ -307,6 +320,17 @@ static void load_callback(int type, int64_t num_value, const char *str_value, vo
         case SMP_EVENT_STR_ERROR:
             fprintf(stderr, "[smp] pipeline error %lld %s\n", (long long) num_value,
                     str_value ? str_value : "");
+            /* 601 is worth calling out by name. It means the decoder could not be
+             * allocated - almost always because something else still holds it: another
+             * media app, or an earlier run of this one that died without unloading. The
+             * pipeline logs "resourceStructure is NULL" alongside it. Nothing the app can
+             * do about it except stop; the resources come back when the holder exits, or
+             * on a reboot. */
+            if (num_value == 601) {
+                fprintf(stderr, "[smp] the video decoder is held by something else - close "
+                                "other media apps, or reboot the TV if a previous run "
+                                "crashed without unloading\n");
+            }
             pthread_mutex_lock(&player->lock);
             player->errored = true;
             pthread_mutex_unlock(&player->lock);

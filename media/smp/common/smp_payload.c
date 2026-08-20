@@ -57,7 +57,8 @@ bool smp_payload_load(char *out, size_t out_len, const smp_load_params *params) 
      * seperatedPTS - the misspelling is in the API - says audio and video timestamps are
      * independent values on a shared time base, which is exactly our two-file case.
      * (On webOS 1, ptsToDecode is a *string* formatted "%lld000000", not a number.) */
-    strbuf_addf(&sb, "\"pauseAtDecodeTime\":true,\"ptsToDecode\":0,\"seperatedPTS\":true");
+    strbuf_addf(&sb, "\"pauseAtDecodeTime\":%s,\"ptsToDecode\":0,\"seperatedPTS\":true",
+                params->pause_at_decode_time ? "true" : "false");
     if (params->has_video) {
         strbuf_addf(&sb, ",\"videoFpsValue\":%d,\"videoFpsScale\":%d", params->video_fps_num,
                     params->video_fps_den);
