@@ -10,3 +10,4 @@
 # of one source - unlike media/smp, where the generations really are the same code.
 
 add_subdirectory(esplayer)
+add_subdirectory(directmedia)

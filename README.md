@@ -19,6 +19,7 @@ media/
     webos5/        SDL exported window - webOS 5 and newer
   ndl/             NDL samples
     esplayer/      libndl-directmedia2, NDL_Esplayer* - webOS 2.x to 3.4
+    directmedia/   libNDL_directmedia, NDL_Direct* - webOS 3.5+, built for API v1 and v2
   lgnc/            liblgncopenapi, LGNC_DIRECT* - webOS 1 to 4, one binary for all of them
 ```
 
@@ -35,7 +36,7 @@ it is not.
 | entry point | C++ class, JSON payloads | plain C, structs | plain C, structs |
 | configuration | one big `Load()` JSON document | a metadata struct | one struct per decoder |
 | buffers | pointer formatted into a JSON string | a struct with a real pointer | pointer + length |
-| timestamps | yes, nanoseconds | yes, 90 kHz ticks | **none at all** |
+| timestamps | yes, nanoseconds | Esplayer 90 kHz ticks; DirectMedia v1 none, v2 microseconds | **none at all** |
 | video plane | your problem - ACB, luna, or an exported window | owned by the API | owned by the API |
 | end of stream | `pushEOS()` | in-band, an EOS-flagged empty buffer | no signal |
 | build variants needed | 4 | 1 per API generation | none |
@@ -148,7 +149,8 @@ hard to diagnose from the TV side.
 | `media/lgnc` | 1 - 4 | **verified on hardware** - same TV, same clip, both decoders opened and the full 300 / 470. Capped at 4: webOS 5 links but does not play |
 | `media/smp/acb` (webos2, webos4) | 2.x, 4.x | built and symbol-verified, not yet run on a device |
 | `media/smp/webos5` | 5+ | **verified on hardware** - OLED77C5, webOS 10.3.1: exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units |
-| `media/ndl/directmedia` | 3.5+ | not written yet |
+| `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - OLED77C5, webOS 10.3.1: 300 video + 469 PCM chunks |
+| `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
 | `media/smp/webos1` | 1.x | not written yet |
 
 ## Debugging on a device
@@ -197,6 +199,15 @@ with `setupPlayback set paused done`, waiting for buffers that the app was withh
   accepted (`NDL_EsplayerFeedData` returns 0) and the decoder goes quiet after
   `STREAM_DRAINED_VIDEO`, but the documented event does not arrive. Since the feed loop
   paces in real time, the drain wait is insurance and timing out is the normal exit.
+- **NDL DirectMedia v2 has no AAC.** Its audio types are PCM, MP3 and Opus only, so the v2
+  build plays `sample.pcm` where v1 plays `sample.aac`. Opus would be far smaller on disk
+  but needs Ogg pages unpacked to recover packet boundaries - demuxing, which these samples
+  deliberately avoid.
+- **Neither DirectMedia version can be told the stream ended.** v2's callback does define
+  an end-of-stream event, but with a buffer-stream source nothing triggers it: on webOS
+  10.3.1 the callback reports load-completed and playing, then nothing until unload. Both
+  builds finish on a drain timeout, which is only safe because the feed loop paced in real
+  time.
 - **Esplayer timestamps are 90 kHz ticks, not nanoseconds.** `NDL_EsplayerLoadEx` would let
   you ask for microseconds, but it is not exported by the library on these TVs - only the
   22 functions in webos-userland's linker script are - so the default `NDL_ESP_PTS_TICKS`

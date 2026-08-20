@@ -34,6 +34,17 @@ es_file *es_file_open_h264(const char *path, int fps_num, int fps_den);
  * nothing needs to be passed in. */
 es_file *es_file_open_adts(const char *path);
 
+/* Open raw interleaved signed 16-bit little-endian PCM, chopped into fixed-size chunks.
+ *
+ * Not every media API takes compressed audio: NDL DirectMedia v2 (webOS 5+) has no AAC in
+ * its audio types at all, only PCM, MP3 and Opus. PCM is the one that needs no demuxing
+ * and no decoder, which makes it the right fallback for a sample.
+ *
+ * `frames_per_chunk` is how many sample frames go into each es_sample - 1024 keeps the
+ * cadence close to an AAC frame, so the feed loop behaves the same either way. */
+es_file *es_file_open_pcm_s16le(const char *path, int sample_rate, int channels,
+                                int frames_per_chunk);
+
 void es_file_close(es_file *file);
 
 /* Fills `out` with the next access unit / frame. Returns false at end of stream.

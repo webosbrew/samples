@@ -12,6 +12,7 @@
 typedef enum es_kind {
     ES_H264,
     ES_ADTS,
+    ES_PCM,
 } es_kind;
 
 struct es_file {
@@ -25,10 +26,13 @@ struct es_file {
     int fps_num;
     int fps_den;
 
-    /* ADTS */
+    /* ADTS and PCM */
     int sample_rate;
     int channels;
     int object_type;
+
+    /* PCM */
+    size_t chunk_bytes;
 };
 
 /* ------------------------------------------------------------------ mapping */
@@ -256,6 +260,47 @@ es_file *es_file_open_adts(const char *path) {
     return file;
 }
 
+/* ---------------------------------------------------------------------- PCM */
+
+static bool pcm_next(es_file *file, es_sample *out) {
+    if (file->pos >= file->size) {
+        return false;
+    }
+    size_t remaining = file->size - file->pos;
+    size_t take = remaining < file->chunk_bytes ? remaining : file->chunk_bytes;
+    /* Never split a sample frame across two feeds. */
+    size_t frame_bytes = (size_t) file->channels * 2;
+    take -= take % frame_bytes;
+    if (take == 0) {
+        return false;
+    }
+
+    out->data = file->base + file->pos;
+    out->size = take;
+    /* Timing is implicit in the byte offset - PCM carries no framing of its own. */
+    out->pts_ns = (int64_t) (file->pos / frame_bytes) * 1000000000LL / file->sample_rate;
+
+    file->pos += take;
+    file->index++;
+    return true;
+}
+
+es_file *es_file_open_pcm_s16le(const char *path, int sample_rate, int channels,
+                                int frames_per_chunk) {
+    if (sample_rate <= 0 || channels <= 0 || frames_per_chunk <= 0) {
+        fprintf(stderr, "es_file: invalid PCM parameters\n");
+        return NULL;
+    }
+    es_file *file = es_file_map(path, ES_PCM);
+    if (file == NULL) {
+        return NULL;
+    }
+    file->sample_rate = sample_rate;
+    file->channels = channels;
+    file->chunk_bytes = (size_t) frames_per_chunk * (size_t) channels * 2;
+    return file;
+}
+
 /* ---------------------------------------------------------------- dispatch */
 
 bool es_file_next(es_file *file, es_sample *out) {
@@ -264,6 +309,8 @@ bool es_file_next(es_file *file, es_sample *out) {
             return h264_next(file, out);
         case ES_ADTS:
             return adts_next(file, out);
+        case ES_PCM:
+            return pcm_next(file, out);
         default:
             return false;
     }

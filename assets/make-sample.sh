@@ -38,3 +38,12 @@ ffmpeg -y -i "$input" -t "$duration" \
 echo
 echo "Wrote:"
 ls -la "$outdir/sample.h264" "$outdir/sample.aac"
+
+# Raw PCM as well, for NDL DirectMedia v2 (webOS 5+): its audio types are PCM, MP3 and
+# Opus - there is no AAC at all - and PCM is the one that needs neither a container nor a
+# decoder to feed.
+ffmpeg -y -i "$input" -t "$duration" \
+    -vn -c:a pcm_s16le -ar 48000 -ac 2 \
+    -f s16le "$outdir/sample.pcm"
+
+ls -la "$outdir/sample.pcm"
