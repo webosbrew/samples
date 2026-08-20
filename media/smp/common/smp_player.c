@@ -82,7 +82,7 @@ static void ensure_playing(smp_player *player) {
     }
 
     bool ok = smp_api_play(player->api);
-    fprintf(stderr, "[smp] Play() -> %s\n", ok ? "ok" : "refused, will retry");
+    fprintf(stderr, "[smp] Play() -> %s\n", ok ? "accepted" : "refused, will retry");
     if (!ok) {
         return;
     }
@@ -282,6 +282,17 @@ static void load_callback(int type, int64_t num_value, const char *str_value, vo
             const char *media_id = smp_api_media_id(player->api);
             fprintf(stderr, "[smp] load completed, mediaId=%s\n", media_id ? media_id : "(none)");
             player->plane.load_completed(player->plane.self, media_id);
+            /*
+             * Unconditionally, even if Play() has already been issued and accepted.
+             *
+             * A Play() sent before LOADCOMPLETED can be *queued* rather than executed - the
+             * pipeline logs "prerolling state (play command pending)" and returns true - and
+             * the queued command is not always run once preroll finishes. Returning true
+             * therefore says nothing about whether playback started, so the call is repeated
+             * at the one moment the pipeline is definitely ready. Playing an already-playing
+             * pipeline is harmless.
+             */
+            player->play_issued = false;
             ensure_playing(player);
             break;
         }

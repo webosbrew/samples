@@ -154,42 +154,37 @@ hard to diagnose from the TV side.
 | `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): `FIRST_FRAME_PRESENTED` and the full 300 / 470 on both, confirmed smooth on screen |
 | `media/lgnc` | 1 - 4 (1.x unverified) | **verified on hardware** - 55LF6310 (webOS 2.2.0) and 43UH6100 (webOS 3.4.0): both decoders opened and the full 300 / 470, confirmed smooth on screen. Capped at 4: webOS 5 links but does not play |
 | `media/smp/acb` (webos2) | 2.x | **verified on hardware** - 55LF6310, webOS 2.2.0: the legacy `std::string` ABI and 3-argument `Load` both work, full 300 / 470, ACB reaching PLAYING before playback, and confirmed playing through on screen |
-| `media/smp/acb` (webos4) | 4.x | built and symbol-verified. **Does not play on a 49LK5900 (webOS 4.4)** - cause unknown, see below |
+| `media/smp/acb` (webos4) | 4.x | **verified on hardware** - 49LK5900, webOS 4.4.0: `PLAYING`, `FRAMEREADY` and end of stream, full 300 / 470 |
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 
-## The webOS 4 ACB sample does not work, and here is everything known
+## What a `Play()` that returns true does not tell you
 
-`media-smp-acb-webos4` reaches the end of its own sequence on a 49LK5900 and still shows
-only a frozen first frame. Recorded here so the next attempt does not start from zero.
+`media-smp-acb-webos4` spent a long time showing nothing but a frozen first frame while its
+own logs looked perfect, and the reason is worth keeping.
 
-What is verified correct: ACB binds to the media id, the display window is set, ACB reports
-`LOADED` then `PLAYING`, `Play()` is accepted, all 300 video and 470 audio units are fed,
-and the pipeline's own `pushDataIntoGstPipeline` shows both streams arriving with correct
-interleaved timestamps. Teardown is clean. The same code plays on webOS 2.2, 3.4, 6.5 and
-10.3.
+`Play()` issued before `LOADCOMPLETED` is **queued, not executed** - the pipeline logs
+`prerolling state (play command pending)` - and it returns `true` anyway. So a player that
+calls `Play()` when the first buffer is accepted (which webOS 2.2 requires, because its
+`LOADCOMPLETED` does not arrive until feeding stops) gets a truthful-looking success and a
+pipeline that never leaves `LoadingState`.
 
-The one signal with no innocent explanation is that the pipeline logs
-`prerolling state (play command pending)` after `Play()`, and never leaves `LoadingState`.
+The fix is to re-issue `Play()` at `LOADCOMPLETED` unconditionally, even when an earlier
+call was accepted. Playing an already-playing pipeline is harmless; skipping the one moment
+the pipeline is definitely ready is not.
 
-Things that looked like the cause and are not:
+The only trustworthy confirmation that playback started is the
+`STATE_UPDATE__PLAYING` event, and `FRAMEREADY` arriving. The samples log both. Several
+things that looked diagnostic are not, each disproved with a control rather than an
+argument:
 
-- **`checkAppSrcBuffer: not Play State`** - YouTube prints this continuously while playing
-  perfectly well on the same TV. It is noise.
+- **`checkAppSrcBuffer: not Play State`** - YouTube prints it continuously while playing
+  perfectly on the same TV.
 - **`surface-manager LSM: client doesn't have enough permission`** - also present during a
-  *working* NDL run. Noise.
-- **`Play()` returning true** - means the call was accepted, not that playback started. The
-  pipeline can and does queue it.
-- **ACB registration leaks** - real, and worth fixing (see below), but clearing them does
-  not fix playback.
-- **`esInfo.pauseAtDecodeTime`** - setting it false changes the symptom (a delay, one
-  frame, then exit) but does not fix it.
-
-Untried leads: `AcbAPI_setVsmInfo`, which the TV exports but the SDK header does not
-declare; and `AcbAPI_initialize`'s player type, currently `PLAYER_TYPE_MSE` - the ACB error
-text refers to it as `purpose(1)`.
+  working NDL run.
+- **`Play()` returning true** - as above.
 
 ## Debugging on a device
 
