@@ -148,8 +148,8 @@ hard to diagnose from the TV side.
 | `media/ndl/esplayer` | 2.x - 3.4 | **verified on hardware** - same TV, same clip, `FIRST_FRAME_PRESENTED` and the full 300 / 470 |
 | `media/lgnc` | 1 - 4 | **verified on hardware** - same TV, same clip, both decoders opened and the full 300 / 470. Capped at 4: webOS 5 links but does not play |
 | `media/smp/acb` (webos2, webos4) | 2.x, 4.x | built and symbol-verified, not yet run on a device |
-| `media/smp/webos5` | 5+ | **verified on hardware** - OLED77C5, webOS 10.3.1: exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units |
-| `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - OLED77C5, webOS 10.3.1: 300 video + 469 PCM chunks |
+| `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both |
+| `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
 | `media/smp/webos1` | 1.x | not written yet |
 
@@ -214,12 +214,15 @@ with `setupPlayback set paused done`, waiting for buffers that the app was withh
   is all there is.
 - **A clean symbol check does not mean the API works.** LGNC exports its full surface on
   webOS 5 and is broken there anyway. The sample's upper bound comes from testing on real
-  hardware; the symbol dumps would have happily let it claim webOS 5.
+  hardware; the symbol dumps would have happily let it claim webOS 5. (A webOS 6.5.2 set
+  has no `liblgncopenapi` at all - nor `libAcbAPI` nor `libndl-directmedia2` - which is a
+  neat independent check on where each of these APIs stops.)
 - **LGNC places the video window in a fixed 1920x1080 space**, not in panel pixels.
   `_LGNC_DIRECTVIDEO_SetDisplayWindow` on a 4K set still wants 1920x1080 coordinates;
   passing real pixel sizes puts the picture in a corner.
-- **LGNC writes to stdout/stderr without line discipline.** Its own logging will splice
-  itself into the middle of yours, so grepping the log for `^[lgnc]` quietly misses lines.
+- **The TV's own logging splices itself into yours**, mid-line and without a newline, so
+  grepping a log for `^[tag]` quietly misses entries. LGNC is the worst offender but it is
+  not alone - a webOS 6 set did it to the starfish sample too. Grep for the tag unanchored.
 - **The SDK's `AcbAPI.h` is wrong.** It declares `AcbAPI_setMediaVideoData(long, const char *)`.
   The shipped library takes a third `long *taskId`, which the exported C++ symbol spells
   out: `_ZN3ACB7AcbCore17setMediaVideoDataESsPl`.
