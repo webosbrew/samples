@@ -32,8 +32,9 @@ set_target_properties(media-smp-webos5 PROPERTIES
 webos_add_ipk(
         TARGET media-smp-webos5
         APPID org.webosbrew.sample.media.smp.webos5
-        TITLE "SMP Player (webOS 5+)"
+        TITLE "SMP Exported Window (webOS 5+)"
         # The ABI here is fine on webOS 4 as well - what makes this a 5+ sample is the
         # exported-window API, which webOS 4 has no equivalent of.
+        ICON_COLOR "#00BCD4"
         WEBOS_VERSIONS ">=5"
         MEDIA "${SAMPLE_VIDEO_ES}" "${SAMPLE_AUDIO_ES}")

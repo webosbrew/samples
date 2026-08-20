@@ -15,7 +15,7 @@ pkg_check_modules(SDL2 REQUIRED sdl2)
 
 # NAME is the webOS generation; COMMON is the ABI variant it needs; VERSIONS scopes the
 # symbol check to the firmware releases that variant is built for.
-function(acb_add_sample NAME COMMON VERSIONS)
+function(acb_add_sample NAME COMMON VERSIONS ICON_COLOR TITLE_SUFFIX)
     set(target media-smp-acb-${NAME})
 
     add_executable(${target} main.c acb_plane.c)
@@ -35,11 +35,12 @@ function(acb_add_sample NAME COMMON VERSIONS)
     webos_add_ipk(
             TARGET ${target}
             APPID org.webosbrew.sample.media.smp.acb.${NAME}
-            TITLE "SMP Player (${NAME})"
+            TITLE "SMP ACB (${TITLE_SUFFIX})"
+            ICON_COLOR "${ICON_COLOR}"
             WEBOS_VERSIONS "${VERSIONS}"
             MEDIA "${SAMPLE_VIDEO_ES}" "${SAMPLE_AUDIO_ES}")
 endfunction()
 
-acb_add_sample(webos2 media-smp-common-legacy-nouserdata ">=2, <3")
-acb_add_sample(webos3 media-smp-common-legacy ">=3, <4")
-acb_add_sample(webos4 media-smp-common-modern ">=4, <5")
+acb_add_sample(webos2 media-smp-common-legacy-nouserdata ">=2, <3" "#3F51B5" "webOS 2")
+acb_add_sample(webos3 media-smp-common-legacy ">=3, <4" "#2196F3" "webOS 3")
+acb_add_sample(webos4 media-smp-common-modern ">=4, <5" "#03A9F4" "webOS 4")

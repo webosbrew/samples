@@ -26,5 +26,6 @@ webos_add_ipk(
         TITLE "NDL Esplayer (webOS 2-3.4)"
         # libndl-directmedia2 is gone from webOS 3.5 on, replaced by libNDL_directmedia
         # with an entirely different API.
+        ICON_COLOR "#4CAF50"
         WEBOS_VERSIONS ">=2, <3.5"
         MEDIA "${SAMPLE_VIDEO_ES}" "${SAMPLE_AUDIO_ES}")

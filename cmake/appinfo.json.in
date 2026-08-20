@@ -6,5 +6,5 @@
   "main": "@IPK_MAIN@",
   "title": "@IPK_TITLE@",
   "icon": "icon.png",
-  "iconColor": "#1f6feb"
+  "iconColor": "@IPK_ICON_COLOR@"
 }
