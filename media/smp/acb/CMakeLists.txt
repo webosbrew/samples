@@ -15,7 +15,7 @@ pkg_check_modules(SDL2 REQUIRED sdl2)
 
 # NAME is the webOS generation; COMMON is the ABI variant it needs; VERSIONS scopes the
 # symbol check to the firmware releases that variant is built for.
-function(acb_add_sample NAME COMMON VERSIONS ICON_COLOR TITLE_SUFFIX)
+function(acb_add_sample NAME COMMON VERSIONS COLOR TITLE_SUFFIX)
     set(target media-smp-acb-${NAME})
 
     add_executable(${target} main.c acb_plane.c)
@@ -36,7 +36,7 @@ function(acb_add_sample NAME COMMON VERSIONS ICON_COLOR TITLE_SUFFIX)
             TARGET ${target}
             APPID org.webosbrew.sample.media.smp.acb.${NAME}
             TITLE "SMP ACB (${TITLE_SUFFIX})"
-            ICON_COLOR "${ICON_COLOR}"
+            COLOR "${COLOR}"
             WEBOS_VERSIONS "${VERSIONS}"
             MEDIA "${SAMPLE_VIDEO_ES}" "${SAMPLE_AUDIO_ES}")
 endfunction()

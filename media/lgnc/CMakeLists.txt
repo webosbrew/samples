@@ -32,6 +32,6 @@ webos_add_ipk(
         TARGET media-lgnc
         APPID org.webosbrew.sample.media.lgnc
         TITLE "LGNC Player (webOS 1-4)"
-        ICON_COLOR "#FF9800"
+        COLOR "#FF9800"
         WEBOS_VERSIONS ">=1, <5"
         MEDIA "${SAMPLE_VIDEO_ES}" "${SAMPLE_AUDIO_ES}")

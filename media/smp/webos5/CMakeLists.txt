@@ -35,6 +35,6 @@ webos_add_ipk(
         TITLE "SMP Exported Window (webOS 5+)"
         # The ABI here is fine on webOS 4 as well - what makes this a 5+ sample is the
         # exported-window API, which webOS 4 has no equivalent of.
-        ICON_COLOR "#00BCD4"
+        COLOR "#00BCD4"
         WEBOS_VERSIONS ">=5"
         MEDIA "${SAMPLE_VIDEO_ES}" "${SAMPLE_AUDIO_ES}")
