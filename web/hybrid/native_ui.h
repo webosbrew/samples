@@ -23,6 +23,12 @@ void native_ui_handle_event(const SDL_Event *event);
 // Draws one frame. Returns true if the user asked to open the web view.
 bool native_ui_frame(SDL_Window *window);
 
+// The value this side owns, and hands to the page on the way in.
+int native_ui_counter(void);
+
+// Whatever the page last sent back, shown in the panel.
+void native_ui_set_web_message(const char *text);
+
 void native_ui_shutdown(void);
 
 #ifdef __cplusplus

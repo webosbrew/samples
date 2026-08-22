@@ -37,11 +37,22 @@
 
 /* The panel, centred on a 1920x1080 panel. */
 #define PANEL_W 900
-#define PANEL_H 380
+#define PANEL_H 470
 
 static SDL_GLContext g_gl;
 static struct nk_context *g_nk;
 static bool g_open_requested;
+
+/* The two ends of the round trip: a number this side owns and hands to the page,
+ * and the last thing the page sent back. */
+static int g_counter = 1;
+static char g_web_message[160] = "(nothing yet)";
+
+int native_ui_counter(void) { return g_counter; }
+
+void native_ui_set_web_message(const char *text) {
+    SDL_strlcpy(g_web_message, text != NULL ? text : "", sizeof(g_web_message));
+}
 
 bool native_ui_init(SDL_Window *window) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -99,19 +110,33 @@ bool native_ui_frame(SDL_Window *window) {
         nk_layout_row_dynamic(g_nk, 56, 1);
         nk_label(g_nk, "native view", NK_TEXT_CENTERED);
 
-        nk_layout_row_dynamic(g_nk, 40, 1);
-        nk_label(g_nk, "SDL2 and Nuklear, in the same process", NK_TEXT_CENTERED);
-        nk_label(g_nk, "as the web view.", NK_TEXT_CENTERED);
+        nk_layout_row_dynamic(g_nk, 34, 1);
+        nk_label(g_nk, "SDL2 and Nuklear, in the same process as the web view.",
+                 NK_TEXT_CENTERED);
 
+        /* This number is what gets handed to the page. */
+        char counter[64];
+        SDL_snprintf(counter, sizeof(counter), "counter = %d", g_counter);
         nk_layout_row_dynamic(g_nk, 20, 1);
         nk_spacing(g_nk, 1);
+        nk_layout_row(g_nk, NK_DYNAMIC, 60, 2, (float[]){0.55f, 0.45f});
+        nk_label(g_nk, counter, NK_TEXT_LEFT);
+        if (nk_button_label(g_nk, "+1")) {
+            g_counter++;
+        }
 
-        nk_layout_row_dynamic(g_nk, 80, 1);
+        /* And this is whatever came back from it. */
+        char reply[224];
+        SDL_snprintf(reply, sizeof(reply), "from the page: %s", g_web_message);
+        nk_layout_row_dynamic(g_nk, 40, 1);
+        nk_label(g_nk, reply, NK_TEXT_LEFT);
+
+        nk_layout_row_dynamic(g_nk, 72, 1);
         if (nk_button_label(g_nk, "Open the web view")) {
             g_open_requested = true;
         }
 
-        nk_layout_row_dynamic(g_nk, 36, 1);
+        nk_layout_row_dynamic(g_nk, 32, 1);
         nk_label(g_nk, "or press OK on the remote", NK_TEXT_CENTERED);
     }
     nk_end(g_nk);

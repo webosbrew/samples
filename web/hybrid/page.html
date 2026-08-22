@@ -3,32 +3,61 @@
 <title>hybrid web view</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0d1b2a; color: #e8eef5;
-               font: 32px/1.5 system-ui, sans-serif; }
+               font: 30px/1.5 system-ui, sans-serif; }
   main { height: 100%; display: flex; flex-direction: column;
-         align-items: center; justify-content: center; gap: 32px; }
-  h1 { font-size: 64px; margin: 0; font-weight: 600; }
+         align-items: center; justify-content: center; gap: 22px; }
+  h1 { font-size: 58px; margin: 0; font-weight: 600; }
   p { margin: 0; opacity: .75; }
-  button { font: inherit; font-size: 36px; padding: 20px 56px; border: 0;
+  .value { font-size: 40px; opacity: 1; }
+  .value b { color: #7fb0ff; }
+  button { font: inherit; font-size: 32px; padding: 16px 44px; border: 0;
            border-radius: 12px; background: #4285f4; color: #fff; cursor: pointer; }
+  button.ghost { background: #23364d; }
   button:focus { outline: 6px solid #ffffff88; }
+  #reply { color: #9be6a4; min-height: 1.5em; }
   #warn { color: #ffb4a2; }
 </style>
 <main>
   <h1>web view</h1>
-  <p>Chromium, in the same process as the SDL view.</p>
-  <button id="exit" autofocus>Back to native</button>
+  <p class="value">native says the counter is <b id="counter">(not yet)</b></p>
+
+  <button id="send">Send a note back to native</button>
+  <p id="reply"></p>
+
+  <button id="exit" class="ghost" autofocus>Back to native</button>
   <p id="hint">or press Back on the remote</p>
 </main>
 <script>
-  // PalmSystem is libcbe's injected bridge - the app loads it with
-  // LoadExtension("palmsystem"). platformBack() arrives in native code as
-  // HandleBrowserControlCommand("platformBack"), which is a notification and
-  // nothing more, so the page stays alive and can be shown again.
-  //
-  // Not close(): that one really closes. It comes out of
-  // RenderViewHostImpl::OnClose() with the render view already being destroyed,
-  // which is fine for an app that is quitting and wrong for one going away for a
-  // moment.
+  // ---- native -> page -------------------------------------------------------
+  // The app calls RunJavaScript("window.fromNative(N)"). There is no typed
+  // bridge in that direction and no return value, so the contract is simply a
+  // function the page agrees to define.
+  var notes = 0;
+  window.fromNative = function (counter) {
+    document.getElementById('counter').textContent = counter;
+  };
+
+  // ---- page -> native -------------------------------------------------------
+  // PalmSystem.getResource reaches the app's HandleBrowserControlFunction, and
+  // whatever the app writes to its result parameter comes back here as the
+  // return value - synchronously. Only the first argument survives, so the
+  // protocol lives inside that one string.
+  function callNative(payload) {
+    if (typeof PalmSystem === 'undefined') return null;
+    return PalmSystem.getResource(payload, '');
+  }
+
+  document.getElementById('send').addEventListener('click', function () {
+    notes++;
+    var reply = callNative('note::note ' + notes + ' from the page');
+    document.getElementById('reply').textContent =
+        reply ? 'native replied: "' + reply + '"' : 'no reply - is PalmSystem loaded?';
+  });
+
+  // ---- leaving --------------------------------------------------------------
+  // platformBack is a notification and nothing else, so the page survives to be
+  // shown again. close() really closes: it arrives from
+  // RenderViewHostImpl::OnClose() with the render view already going away.
   function exitToNative() {
     if (typeof PalmSystem === 'undefined') {
       document.getElementById('hint').id = 'warn';
@@ -41,7 +70,6 @@
 
   document.getElementById('exit').addEventListener('click', exitToNative);
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ') exitToNative();
     if (e.key === 'Backspace' || e.key === 'Escape') exitToNative();
   });
 

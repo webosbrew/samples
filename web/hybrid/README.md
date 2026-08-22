@@ -103,6 +103,65 @@ normally, reporting `load finished`, and never appearing.
 There is no matching `DetachWebContents()` on the way out. Calling it there segfaults on a
 null pointer: by then the contents it would detach are already gone.
 
+## Passing data across
+
+The sample carries a value each way, so both channels are visible at once: the native
+panel owns a counter and hands it to the page on the way in, and the page sends a note
+back that the panel then shows.
+
+**Native to page** is `RunJavaScript()`, and that is the whole mechanism. There is no typed
+bridge and no return value, so the data goes in as a literal in a call to a function the
+page agreed to define:
+
+```cpp
+snprintf(js, sizeof(js), "window.fromNative && window.fromNative(%d)", counter);
+webview->RunJavaScript(js);
+```
+
+Timing is the only subtlety. On the first visit the page has not run yet, so the handover
+waits for `LoadFinished()`; on later visits it is already loaded and suspended, so the value
+goes over immediately. Both are deferred out of the delegate callback.
+
+**Page to native** goes through the injection, and is the only channel here that carries a
+value in *both* directions:
+
+```js
+var reply = PalmSystem.getResource('note::hello', '');   // -> "native got it"
+```
+```cpp
+void HandleBrowserControlFunction(const std::string& command,
+                                  const std::vector<std::string>& args,
+                                  std::string* result) override {
+  // args[0] == "note::hello"
+  if (result) *result = "native got it";   // becomes the JS return value
+}
+```
+
+It is synchronous: whatever the app writes to `result` is what the JavaScript call returns.
+Two constraints shape how you use it. The command names belong to the injection rather than
+to you - the page arrives here by calling `getResource` - so a real protocol lives inside
+the argument, which is why the sample prefixes its payload with `note::`. And **only the
+first argument survives the trip**, so everything has to be packed into that one string.
+
+### This is what webOSTV.js is built on
+
+Not a homebrew-only seam. LG's own [webOSTV.js](https://webostv.developer.lge.com/develop/tools/webostvjs-introduction)
+reaches the platform exactly this way - unminified, its service call is:
+
+```js
+new PalmServiceBridge, this.bridge.onservicecallback = ..., this.bridge.call(uri, params)
+```
+
+and it uses `PalmSystem.platformBack`, `PalmSystem.deviceInfo`, `PalmSystem.identifier` and
+`PalmSystem.stageReady` besides - `platformBack` being the same call this sample leaves the
+web view with. So a page inside this app has the same foundation a normal webOS web app
+does, and stock `webOSTV.js` should load in it.
+
+Whether `webOS.service.request()` then *succeeds* is a separate question and untested here:
+`PalmServiceBridge.call()` ends up at ls-hubd, which already logs
+`Can not find service "" permissions` for this executable. That is the LS2 role side, and
+this sample makes no Luna calls.
+
 ## How the page asks to leave
 
 Through libcbe's own callbacks. The app loads the `palmsystem` injection, which gives page

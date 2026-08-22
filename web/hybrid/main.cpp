@@ -45,6 +45,7 @@ std::string g_app_path;
 class HybridWebView;
 void ShowNativeView();
 void RequestNativeView();
+void PushCounterToPage();
 
 // The page asks to leave through libcbe's own callbacks, not through a side
 // effect of some UI property. Loading the "palmsystem" injection gives page
@@ -63,7 +64,16 @@ class HybridWebView : public webos::WebViewBase {
   void TitleChanged(const std::string& title) override {
     printf("[web] title '%s'\n", title.c_str());
   }
-  void LoadFinished(const std::string&) override { puts("[web] load finished"); }
+  void LoadFinished(const std::string&) override {
+    puts("[web] load finished");
+    // The page only has its functions once it has run, so the first handover
+    // waits for this. Deferred, because delegate callbacks run inside libcbe's
+    // own stack.
+    g_idle_add([](gpointer) -> gboolean {
+      PushCounterToPage();
+      return G_SOURCE_REMOVE;
+    }, NULL);
+  }
   void LoadFailed(const std::string& url, int code, const std::string& desc) override {
     printf("[web] FAILED %s (%d %s)\n", url.c_str(), code, desc.c_str());
   }
@@ -89,6 +99,24 @@ class HybridWebView : public webos::WebViewBase {
                                    const std::vector<std::string>&) override {
     printf("[web] browser control '%s'\n", command.c_str());
     if (command == "platformBack") RequestNativeView();
+  }
+
+  // Page to native, with an answer. This is the only channel libcbe offers that
+  // carries a value in both directions: the string written to *result becomes
+  // the return value of the JavaScript call, synchronously.
+  //
+  // The command names are the injection's, not ours - the page reaches this by
+  // calling PalmSystem.getResource - so a real protocol goes inside the
+  // argument. Note that only the *first* argument survives the trip.
+  void HandleBrowserControlFunction(const std::string& command,
+                                    const std::vector<std::string>& args,
+                                    std::string* result) override {
+    const std::string payload = args.empty() ? std::string() : args[0];
+    printf("[web] function '%s' payload '%s'\n", command.c_str(), payload.c_str());
+    if (payload.compare(0, 6, "note::") == 0) {
+      native_ui_set_web_message(payload.substr(6).c_str());
+      if (result) *result = "native got it";
+    }
   }
   bool DecidePolicyForResponse(bool, int, const std::string&, const std::string&) override {
     return false;
@@ -174,7 +202,9 @@ void ShowWebView() {
   if (first_time) {
     const std::string url = "file://" + g_app_path + "/page.html";
     printf("[web] loading %s\n", url.c_str());
-    g_webview->LoadUrl(url);
+    g_webview->LoadUrl(url);  // the handover happens in LoadFinished
+  } else {
+    PushCounterToPage();  // already loaded, so hand over the current value now
   }
 }
 
@@ -210,6 +240,18 @@ gboolean SwitchToNativeLater(gpointer) {
 }
 
 void RequestNativeView() { g_idle_add(SwitchToNativeLater, NULL); }
+
+// Native to page. RunJavaScript is the whole mechanism - there is no typed
+// bridge and no return value, so the data goes in as a literal in a call to a
+// function the page defines.
+void PushCounterToPage() {
+  if (g_webview == NULL) return;
+  char js[128];
+  snprintf(js, sizeof(js), "window.fromNative && window.fromNative(%d)",
+           native_ui_counter());
+  printf("[web] -> %s\n", js);
+  g_webview->RunJavaScript(js);
+}
 
 // ------------------------------------------------------------- the one loop
 
