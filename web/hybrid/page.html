@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sign in</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1b2a; color: #e8eef5;
+               font: 28px/1.5 system-ui, sans-serif; }
+  main { height: 100%; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; gap: 18px; }
+  h1 { font-size: 52px; margin: 0 0 8px; font-weight: 600; }
+  /* Flex rows rather than a grid: the TV's Chromium is 68, and its grid put all
+     four fields on one line. */
+  form { display: flex; flex-direction: column; gap: 18px; }
+  .field { display: flex; align-items: center; gap: 20px; }
+  label { opacity: .8; width: 200px; text-align: right; }
+  input { font: inherit; width: 420px; padding: 14px 18px; border-radius: 10px;
+          border: 2px solid #24405f; background: #12233a; color: #e8eef5; }
+  input:focus { outline: none; border-color: #4285f4; }
+  .row { display: flex; gap: 16px; justify-content: center; margin-top: 12px; }
+  button { font: inherit; padding: 16px 44px; border: 0; border-radius: 12px;
+           background: #4285f4; color: #fff; cursor: pointer; }
+  button.ghost { background: #23364d; }
+  button:focus { outline: 5px solid #ffffff88; }
+  p.note { opacity: .55; font-size: 22px; margin: 10px 0 0; }
+</style>
+<main>
+  <h1>Example Provider</h1>
+  <form id="login">
+    <div class="field">
+      <label for="user">Username</label>
+      <input id="user" name="user" value="demo" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="pass">Password</label>
+      <input id="pass" name="pass" type="password" value="hunter2"
+             autocomplete="current-password">
+    </div>
+    <div class="row">
+      <button id="submit" type="submit">Log in</button>
+      <button id="cancel" type="button" class="ghost">Cancel</button>
+    </div>
+  </form>
+  <p class="note" id="target"></p>
+</main>
+<script>
+  // The app opened this page with ?state=...&redirect_uri=..., exactly the way
+  // an OAuth client hands parameters to a provider. Nothing else crosses in.
+  var params = new URLSearchParams(location.search);
+  var redirectUri = params.get('redirect_uri') || '';
+  var state = params.get('state') || '';
+  document.getElementById('target').textContent = 'redirect_uri: ' + redirectUri;
+
+  // And the only thing that crosses back out is this navigation. The app sees
+  // the URL in WebViewDelegate::DidStartNavigation before the request is made,
+  // so the target never has to exist - which is why a real provider can send
+  // you to a URL that serves nothing at all.
+  function finish(extra) {
+    location.href = redirectUri + '?state=' + encodeURIComponent(state) + extra;
+  }
+
+  document.getElementById('login').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var user = document.getElementById('user').value.trim();
+    if (!user) return;
+    finish('&user=' + encodeURIComponent(user));
+  });
+
+  document.getElementById('cancel').addEventListener('click', function () {
+    finish('');  // no user: the app reads that as cancelled
+  });
+</script>

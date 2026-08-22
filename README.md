@@ -3,10 +3,22 @@
 Small, readable sample apps for LG webOS native homebrew. Each one does a single thing and
 is meant to be read top to bottom, without a framework in the way.
 
-The media samples feed raw elementary streams straight into the TV's hardware decoder, with
-SDL2 owning the window and the remote control. There are two entirely different ways to
-reach that decoder, and all of them get samples: **starfish-media-pipeline**
-(`libplayerAPIs`), **NDL**, and **LGNC** (the LG NetCast Open API).
+Most of them are media samples: they feed raw elementary streams straight into the TV's
+hardware decoder, with SDL2 owning the window and the remote control. There are three
+entirely different ways to reach that decoder, and all of them get samples:
+**starfish-media-pipeline** (`libplayerAPIs`), **NDL**, and **LGNC** (the LG NetCast Open
+API).
+
+The `web/` samples are the odd ones out. They link `libcbe.so` - the TV's own Chromium, the
+engine every web app on the box already runs inside - and put a real web view in a *native*
+app, with no WAM and no web app package. There is no SDK for that library; the headers were
+reconstructed from firmware symbol tables and from the vtables of WAM's own subclasses, and
+`web/cbe/README.md` writes down how. `web/hybrid` uses that to solve a real problem: a
+native app that needs the user to sign in on somebody else's web page, and needs the token
+that comes back in the redirect URL, without shipping a browser to do it. It runs SDL2 with
+a Nuklear UI and the web view in one process - `WebOSMain()` never returns, so SDL is pumped
+from Chromium's message loop rather than its own - and reads the answer straight out of the
+navigation.
 
 ## What is here
 
@@ -21,6 +33,10 @@ media/
     esplayer/      libndl-directmedia2, NDL_Esplayer* - webOS 2.x to 3.4
     directmedia/   libNDL_directmedia, NDL_Direct* - webOS 3.5+, built for API v1 and v2
   lgnc/            liblgncopenapi, LGNC_DIRECT* - webOS 1 to 4, one binary for all of them
+web/
+  libcbe/          reconstructed libcbe headers and the link stub, shared by both
+  cbe/             the smallest thing that puts a web page on screen
+  hybrid/          a native sign-in flow: SDL2 + Nuklear, a web login page, one process
 ```
 
 The same two files play through all three stacks. Comparing the three `main.c` files is the
@@ -104,11 +120,12 @@ and skips everything else.
 
 ### Icons
 
-`assets/icons/<name>.png` carries white artwork on transparency - the API name, a play
-mark, and which variant it is - and no colour at all. Each sample passes a Material 500 colour to `webos_add_ipk`, which
+`assets/icons/<name>.png` carries white artwork on transparency - the API name, a mark (a
+play triangle for the media samples, a globe for the web ones), and which variant it is -
+and no colour at all. Each sample passes a Material 500 colour to `webos_add_ipk`, which
 writes it to both `iconColor` and `bgColor` in `appinfo.json`, and webOS paints that behind
 the glyph. Families are grouped by hue: blues for starfish, greens for NDL, orange for
-LGNC.
+LGNC, blue and purple for the web samples.
 
 Both fields are set deliberately: `bgColor` is the tile background, while `iconColor` fills
 behind the icon itself - without it the launcher's default shows through the glyph's
@@ -181,6 +198,8 @@ hard to diagnose from the TV side.
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
+| `web/hybrid` | webOS 4.0 | **verified on hardware** - 49LK5900, webOS 4.4.3: the sign-in flow runs end to end - native panel, web login form, and back with the username read out of the intercepted redirect URL. The OK key is verified too, injected with `com.webos.service.networkinput/test/sendKeyCode`; leaving the web view by remote is not, since keys go to whichever window is up |
+| `web/cbe` | webOS 4.0 | **verified on hardware** - 49LK5900, webOS 4.4.3: the window registers with LSM and SAM as the foreground card, and a display capture shows the page rendered full-screen at 1920x1080. Input and lifecycle are not implemented |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 
 ## What a `Play()` that returns true does not tell you
