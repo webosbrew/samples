@@ -15,6 +15,7 @@
 //   [SDL view] --OK/Enter--> [web view] --exit button or Back--> [SDL view]
 
 #include <SDL.h>
+#include <SDL_webOS.h>
 
 #include "native_ui.h"
 #include <glib.h>
@@ -297,8 +298,20 @@ gboolean Pump(gpointer) {
 
     native_ui_handle_event(&e);
     if (e.type != SDL_KEYDOWN) continue;
-    printf("[sdl] key %d\n", static_cast<int>(e.key.keysym.sym));
-    switch (e.key.keysym.sym) {
+
+    // Two different numbers. The remote's OK arrives as an ordinary keysym, but
+    // Back and Exit have no keysym at all - the webOS fork of SDL reports them
+    // as scancodes above 480, listed in SDL_webOS.h. Switching on keysym.sym
+    // alone means Back can never match, which is a quiet way to lose it.
+    const int sym = static_cast<int>(e.key.keysym.sym);
+    const int scancode = static_cast<int>(e.key.keysym.scancode);
+    printf("[sdl] key sym=%d scancode=%d\n", sym, scancode);
+
+    if (scancode == SDL_WEBOS_SCANCODE_BACK || scancode == SDL_WEBOS_SCANCODE_EXIT) {
+      if (!g_native_visible) ShowNativeView();
+      continue;
+    }
+    switch (sym) {
       case SDLK_RETURN:
       case SDLK_KP_ENTER:
       case SDLK_SPACE:
@@ -333,8 +346,8 @@ gboolean StartApp(gpointer) {
   // Without these the TV keeps Back and Exit for itself and the app never sees
   // them. They are plain strings, so setting them costs nothing where they are
   // not understood.
-  SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
-  SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_EXIT", "true");
+  SDL_SetHint(SDL_HINT_WEBOS_ACCESS_POLICY_KEYS_BACK, "true");
+  SDL_SetHint(SDL_HINT_WEBOS_ACCESS_POLICY_KEYS_EXIT, "true");
 
   if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
     printf("[sdl] SDL_INIT_VIDEO failed: %s\n", SDL_GetError());

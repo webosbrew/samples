@@ -302,15 +302,32 @@ the mapping is not identity.)
 `ls-monitor -i com.webos.service.networkinput` lists the rest, including
 `getPointerInputSocket` for the magic-remote pointer.
 
-**Still not verified: Back.** Codes 158 (`KEY_BACK`), 174 (`KEY_EXIT`) and 1 (`KEY_ESC`)
-inject without error and reach nothing, in either view, and the app does not close either -
-so they are being filtered before any window sees them. `sendSpecialKey` cannot help:
-strings in `/usr/sbin/network-input-service` show its table covers media and menu keys with
-no BACK or EXIT in it.
+Injecting and watching gives this mapping, which is worth having written down because two
+different numbers are involved:
 
-That leaves the Back path untested rather than broken - a real remote may well deliver what
-this service will not. The web window does ask for the key, using the same property names
-WAM uses:
+| evdev code sent | SDL `keysym.sym` | SDL `keysym.scancode` | |
+|---|---|---|---|
+| 28 `KEY_ENTER` | 13 `SDLK_RETURN` | 40 | OK |
+| 174 `KEY_EXIT` | **0** | **505** `SDL_WEBOS_SCANCODE_EXIT` | |
+| 1 `KEY_ESC` | 27 | 41 | |
+| 14 `KEY_BACKSPACE` | 8 | 42 | |
+
+**Back and Exit have no keysym.** They arrive only as scancodes above 480, defined in
+`SDL_webOS.h`, so code that switches on `keysym.sym` drops them silently - which is what
+this sample did until the table above was measured. `Pump()` now checks the scancode first.
+
+`KEY_BACK` (158) injects without error and arrives nowhere; the service's `sendSpecialKey`
+table, in `strings /usr/sbin/network-input-service`, has no BACK or EXIT either. Exit is
+reachable and Back is not, at least by injection.
+
+### Keys only reach whichever window is up
+
+Once the web view is showing, the SDL loop stops seeing keys entirely - they belong to
+libcbe's window. So the OK key opening the web view is an SDL concern, and leaving again is
+not: that has to come from the page (its `keydown` handler) or from
+`WebAppWindowBase::event()`, and neither is verified.
+
+The web window does ask for the key, using the same property names WAM uses:
 
 ```cpp
 window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
