@@ -73,7 +73,7 @@ Two independent sources that agree with each other:
   followed by a `BlinkWebView` that writes its first field at offset 8 says
   `webos::WebViewBase` is exactly 8 bytes: a vptr and one pimpl pointer.
 
-Three facts in `webos/webview_base.h` are load-bearing:
+Three facts in `web/libcbe/webos/webview_base.h` are load-bearing:
 
 * `WebViewDelegate` has **no virtual destructor**. Adding one shifts every slot by two.
 * The delegate is **24 slots** long. Only the first 17 have recoverable names; libcbe still
@@ -88,8 +88,8 @@ lands at slot 2. The two classes are not symmetric.
 
 ## Linking
 
-The NDK has no libcbe, so the build makes a stand-in: `cbe_stub.cpp` is compiled into a
-shared object with SONAME `libcbe.so` and nothing else in it. The loader picks up the TV's
+The NDK has no libcbe, so the build makes a stand-in: `web/libcbe/cbe_stub.cpp` is compiled
+into a shared object with SONAME `libcbe.so` and nothing else in it. The loader picks up the TV's
 real library at runtime because the SONAME matches. It is never installed - see
 `BUNDLE_LIBS` being absent from the `webos_add_ipk` call.
 
@@ -114,8 +114,10 @@ Launch it, do not run the binary from a shell: SAM sets `APPID` and `XDG_RUNTIME
 gives the process the session it needs. Direct execution mostly works but is not the thing
 being demonstrated.
 
-Progress shows up in `/var/log/messages` under the `web-cbe` tag (`journalctl` is not on
-the PATH these shells get), and the sample's own delegate output goes to stdout.
+SAM points a launched app's stdout at `/dev/null`, so the sample redirects it - its own
+delegate output is in `/tmp/web-cbe.log`. libcbe's logging goes through PmLog and reaches
+`/var/log/messages` under the `web-cbe` tag either way (`journalctl` is not on the PATH
+these shells get).
 
 To see what actually reached the screen - LSM will happily report a foreground surface that
 drew nothing:
@@ -264,6 +266,11 @@ Neither of those two combinations was tested. What *is* established is the const
 shapes them: `WebOSMain()` owns the process and the default `GMainContext`, so a second
 toolkit (SDL2, say) cannot run its own main loop in the usual way - it would need its own
 thread and its own Wayland surface, and the two would then compete for LSM focus.
+
+## A worked hybrid app
+
+`web/hybrid` is this sample plus an SDL2 view, in one process, swapping which one is on
+screen. It is where the show/hide and JavaScript-bridge machinery below is actually used.
 
 ## What is not here
 

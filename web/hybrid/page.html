@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hybrid web view</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1b2a; color: #e8eef5;
+               font: 32px/1.5 system-ui, sans-serif; }
+  main { height: 100%; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; gap: 32px; }
+  h1 { font-size: 64px; margin: 0; font-weight: 600; }
+  p { margin: 0; opacity: .75; }
+  button { font: inherit; font-size: 36px; padding: 20px 56px; border: 0;
+           border-radius: 12px; background: #4285f4; color: #fff; cursor: pointer; }
+  button:focus { outline: 6px solid #ffffff88; }
+</style>
+<main>
+  <h1>web view</h1>
+  <p>Chromium, in the same process as the SDL view.</p>
+  <button id="exit" autofocus>Back to native</button>
+  <p id="hint">or press Back on the remote</p>
+</main>
+<script>
+  // Setting document.title is the whole channel back to native code: the app
+  // sees it as WebViewDelegate::TitleChanged and switches views. Crude, but it
+  // needs no injection and no permissions.
+  function exitToNative() { document.title = 'hybrid:exit'; }
+
+  document.getElementById('exit').addEventListener('click', exitToNative);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') exitToNative();
+    if (e.key === 'Backspace' || e.key === 'Escape') exitToNative();
+  });
+  // The exit signal is a title change, so the title has to be put back when the
+  // page is shown again - otherwise there is no edge for native code to see.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) document.title = 'hybrid web view';
+  });
+
+  console.log('hybrid page ready');
+</script>

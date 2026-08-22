@@ -9,11 +9,13 @@ entirely different ways to reach that decoder, and all of them get samples:
 **starfish-media-pipeline** (`libplayerAPIs`), **NDL**, and **LGNC** (the LG NetCast Open
 API).
 
-`web/cbe` is the odd one out. It links `libcbe.so` - the TV's own Chromium, the engine
-every web app on the box already runs inside - and puts a real web view in a *native* app,
-with no WAM and no web app package. There is no SDK for that library; the sample's headers
-were reconstructed from firmware symbol tables and from the vtables of WAM's own
-subclasses, and `web/cbe/README.md` writes down how.
+The `web/` samples are the odd ones out. They link `libcbe.so` - the TV's own Chromium, the
+engine every web app on the box already runs inside - and put a real web view in a *native*
+app, with no WAM and no web app package. There is no SDK for that library; the headers were
+reconstructed from firmware symbol tables and from the vtables of WAM's own subclasses, and
+`web/cbe/README.md` writes down how. `web/hybrid` then runs SDL2 and a web view in one
+process and switches between them, which is the awkward case: `WebOSMain()` never returns,
+so SDL has to be pumped from Chromium's message loop rather than its own.
 
 ## What is here
 
@@ -29,7 +31,9 @@ media/
     directmedia/   libNDL_directmedia, NDL_Direct* - webOS 3.5+, built for API v1 and v2
   lgnc/            liblgncopenapi, LGNC_DIRECT* - webOS 1 to 4, one binary for all of them
 web/
-  cbe/             libcbe - the TV's own Chromium, embedded in a native app
+  libcbe/          reconstructed libcbe headers and the link stub, shared by both
+  cbe/             the smallest thing that puts a web page on screen
+  hybrid/          SDL2 and a web view in one process, swapping which one is shown
 ```
 
 The same two files play through all three stacks. Comparing the three `main.c` files is the
@@ -118,7 +122,7 @@ play triangle for the media samples, a globe for the web ones), and which varian
 and no colour at all. Each sample passes a Material 500 colour to `webos_add_ipk`, which
 writes it to both `iconColor` and `bgColor` in `appinfo.json`, and webOS paints that behind
 the glyph. Families are grouped by hue: blues for starfish, greens for NDL, orange for
-LGNC, blue for the web view.
+LGNC, blue and purple for the web samples.
 
 Both fields are set deliberately: `bgColor` is the tile background, while `iconColor` fills
 behind the icon itself - without it the launcher's default shows through the glyph's
@@ -191,6 +195,7 @@ hard to diagnose from the TV side.
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
+| `web/hybrid` | 4.x | **verified on hardware** - 49LK5900, webOS 4.4.3: SDL2 and the web view both render full-screen from one process, switching works both ways, and the page's exit button reaches native code via `TitleChanged`. The transitions were driven by a test hook, not by the remote - key delivery is untested |
 | `web/cbe` | 4.x | **verified on hardware** - 49LK5900, webOS 4.4.3: the window registers with LSM and SAM as the foreground card, and a display capture shows the page rendered full-screen at 1920x1080. Input and lifecycle are not implemented |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 

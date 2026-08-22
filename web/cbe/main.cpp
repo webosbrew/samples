@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unistd.h>
 #include <string>
 #include <vector>
 
@@ -119,6 +120,13 @@ bool IsBrowserProcess(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  // SAM points a launched app's stdout at /dev/null, so everything printed below
+  // is invisible unless it is redirected somewhere. (libcbe's own logging goes
+  // through PmLog and reaches /var/log/messages regardless.)
+  if (IsBrowserProcess(argc, argv)) {
+    freopen("/tmp/" APP_LOG_NAME ".log", "w", stdout);
+    dup2(1, 2);
+  }
   setvbuf(stdout, nullptr, _IOLBF, 0);
 
   const char* slash = strrchr(argv[0], '/');
