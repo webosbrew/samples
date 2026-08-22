@@ -8,10 +8,12 @@
 # webOS 5 replaced the free WebOSMain() with a webos::WebOSMain class and changed
 # the constructor again. The hard floor is 3.4: webOS 1 and 2 have no libcbe.
 #
-# The upper bound is 4.9, not 5: Initialize() gains one bool at 4.10, well before
-# the webOS 5 rewrite. -verify cannot catch that - it has no 4.10 dump - so the
-# range is set from the larger symbol set in dev-toolbox-cli. Within webOS 4 only
-# 4.4.2 and 4.9.7 have dumps at all; 4.0 to 4.3 is assumed. See README.md.
+# The upper bound is starfish 4.9, not 5. The firmware dumps carry one entry per
+# major release, and webOS 4 has two of them: starfish 4.4.2 is webOS 4.0 (the
+# 2018 sets, which this targets) and starfish 4.10.0 is webOS 4.5 (2019), where
+# Initialize() takes a ninth argument. -verify does not catch that - it reports
+# All OK for 4.10.0 despite the symbol being absent from the whole dump - so this
+# range comes from reading the symbol tables. See README.md.
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED glib-2.0)

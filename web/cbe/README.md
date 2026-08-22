@@ -129,20 +129,35 @@ Two things make it a separate project rather than a variant of this one:
 
 A 55LF6310 (webOS 2.2.0) is the set that could settle the first point.
 
-## What "webOS 4" is actually backed by
+## Which sets that actually is
 
-The `-verify` firmware set has exactly two webOS 4 dumps, 4.4.2 and 4.9.7, and both are
-clean. There is no dump anywhere between 4.0 and 4.3, so that part of the declared range
-rests on the API being unchanged across the generation rather than on evidence. Hardware
-testing was on a 49LK5900 at 4.4.3.
+The firmware dumps carry one entry per major webOS release, so a release number in the
+table above stands for the whole generation rather than for one build. Two of them are
+webOS 4:
 
-Read it as: **4.4.2 and 4.9.7 verified, 4.0 to 4.3 assumed, 4.10 known broken.**
+| dump | LG's name for it | this sample |
+|---|---|---|
+| starfish 4.4.2 (`HE_DTV_W18R`) | webOS 4.0, the 2018 sets | **works** |
+| starfish 4.10.0 (`HE_DTV_W19P`) | webOS 4.5, the 2019 sets | **does not load** |
 
-That last one is worth dwelling on, because `-verify` cannot see it: the verifier ships no
-4.10 dump, so `>=4, <5` and `>=4, <4.10` check exactly the same two firmwares and both pass.
-The break was only visible in the larger symbol set under
-`dev-toolbox-cli/common/data`. A clean `-verify` means "nothing missing in the dumps we
-have", which is a narrower claim than it looks.
+So the honest scope is *webOS 4.0 only* - one model generation. Hardware testing was a
+49LK5900 (2018) at starfish 4.4.3.
+
+Reaching the 2019 sets is one `bool`: `Initialize` takes nine arguments there instead of
+eight. That is a smaller delta than any other variant on this page, and it doubles the
+hardware.
+
+### `-verify` does not catch this
+
+Worth knowing before trusting a green run. `webosbrew-elf-verify` reports **All OK** for
+starfish 4.10.0 even though nothing in that entire dump exports the eight-argument
+`Initialize` - grepping every `.json` in the firmware finds only the nine-argument one. It
+flags the same symbol correctly on 5.3.1 ("missing symbol ... is bound lazily"), so the
+check works in general and this firmware is a false negative.
+
+The range here was therefore set by reading the symbol tables directly, not by trusting the
+tool. Which is the same lesson this repo already learned from the other direction: a clean
+`-verify` says the symbols were found, not that the app runs.
 
 ## Where the headers came from
 
