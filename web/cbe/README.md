@@ -5,9 +5,14 @@ LG's webOS patches, and the thing every web app on the TV actually runs inside. 
 plain shared library with a C++ ABI, and a native app can link against it and get a real
 web view - no WAM, no web app package, no `type: "web"`.
 
-There is no SDK for this. No headers ship on the device or in the NDK, and the library is
-stripped. What this sample links against was reconstructed, and the reconstruction is the
+No headers ship on the device, none ship in the buildroot NDK, and the library is stripped,
+so what this sample links against was reconstructed - and the reconstruction is the
 interesting part, so it is written down below.
+
+There *is* one more place to look, though it does not remove the need: the **webOS OSE SDK**
+(`/opt/webos-sdk-x86_64`) ships real `webos/webview_base.h`, `webview_delegate.h` and
+`webapp_window_delegate.h`, plus the whole of WAM under `usr/include/webappmanager/`. See
+"What the OSE SDK gives you" below for why that is a naming reference rather than an ABI.
 
 ## What it does
 
@@ -161,7 +166,7 @@ tool. Which is the same lesson this repo already learned from the other directio
 
 ## Where the headers came from
 
-Two independent sources that agree with each other:
+Three sources that agree with each other:
 
 * **Firmware symbol tables** (`dev-toolbox-cli/common/data/*/libcbe.so.json`) give every
   exported name, and therefore every signature, across every release.
@@ -170,6 +175,23 @@ Two independent sources that agree with each other:
   pin down slot order, and their constructors pin down object size - `operator new(32)`
   followed by a `BlinkWebView` that writes its first field at offset 8 says
   `webos::WebViewBase` is exactly 8 bytes: a vptr and one pimpl pointer.
+* **The OSE SDK headers**, for names and return types the binaries cannot give.
+
+### What the OSE SDK gives you
+
+`/opt/webos-sdk-x86_64/.../usr/include/chromium53/webos/` has the genuine article, and it
+confirms all three load-bearing facts above independently: `WebViewBase : public
+WebViewDelegate` with a single `WebView* m_webview` private member, a `WebViewDelegate`
+with no virtual destructor, and a `WebAppWindowDelegate` that has one. It also names the
+delegate slots this repo had numbered, and corrects `CheckKeyFilterTable` from `bool` to
+`unsigned`.
+
+What it cannot do is replace the reconstruction, because it is a different Chromium. The
+SDK is chromium53; retail webOS 4 is chromium68, and LG moved the delegate in between -
+`AcceptsVideoCapture` and `AcceptsAudioCapture` are gone, `DidStartNavigation`,
+`DidFinishNavigation` and `LoadAborted` are new. Its bundled `libcbe.so` is a third thing
+again, exporting `webos::WebOSMain::Run` and a six-argument `Initialize`, which is the
+webOS 6+ shape. Useful, but not the TV.
 
 Three facts in `web/libcbe/webos/webview_base.h` are load-bearing:
 

@@ -55,13 +55,18 @@ class WebViewDelegate {
   virtual void RenderProcessCreated(int pid) = 0;
   virtual void RenderProcessGone() = 0;
 
-  // Slots 17 to 23. Two of them are named in WAM's binary - the browser-control
-  // bridge behind window.PalmSystem - and the rest WAM overrides with empty
-  // bodies, which is all the sample needs them to be. They are declared void and
-  // argument-less on purpose: the callee never touches the arguments, and on
-  // AAPCS ignoring them is safe. Do not add or remove entries.
-  virtual void HandleUnknown17() {}
-  virtual void HandleUnknown18() {}
+  // Slots 17 to 23. Two are named in WAM's binary - the browser-control bridge
+  // behind window.PalmSystem - and the names of the rest come from the webOS OSE
+  // SDK's own webos/webview_delegate.h, which is chromium53 where the TV is
+  // chromium68. That header is a naming reference, not the ABI: its version of
+  // this class has AcceptsVideoCapture/AcceptsAudioCapture where webOS 4 has
+  // DidStartNavigation, DidFinishNavigation and LoadAborted, so the slot numbers
+  // below still come from the vtable rather than from it.
+  //
+  // DidClearWindowObject is not a guess: slot 18 fires twice during a page load,
+  // which is exactly when the window object is recreated.
+  virtual void DidHistoryBackOnTopPage() {}
+  virtual void DidClearWindowObject() {}
   virtual void HandleBrowserControlCommand(
       const std::string& command, const std::vector<std::string>& arguments) {
     (void)command;
@@ -75,9 +80,16 @@ class WebViewDelegate {
     (void)arguments;
     (void)result;
   }
-  virtual void HandleUnknown21() {}
-  virtual void HandleUnknown22() {}
-  virtual void HandleUnknown23() {}
+  // Beyond 20 the mapping is unconfirmed. The SDK header offers
+  // DidDropAllPeerConnections(reason), AllowMouseOnOffEvent() and
+  // SendCookiesForHostname(), and also declares ~WebViewBase() virtual - so one
+  // of these pairs may be the destructor slots instead. They are kept as
+  // no-argument stubs because nothing here calls them; AllowMouseOnOffEvent
+  // returns bool rather than void so a caller that reads the result gets a
+  // definite answer instead of whatever was in r0.
+  virtual void DidDropAllPeerConnections() {}
+  virtual bool AllowMouseOnOffEvent() const { return false; }
+  virtual void SendCookiesForHostname() {}
 };
 
 class WebViewBase : public WebViewDelegate {

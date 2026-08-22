@@ -29,7 +29,8 @@ class WebAppWindowDelegate {
  public:
   virtual ~WebAppWindowDelegate() {}
   virtual bool event(WebOSEvent*) { return false; }
-  virtual bool CheckKeyFilterTable(unsigned, unsigned*) { return false; }
+  // unsigned, not bool - the SDK's webos/webapp_window_delegate.h says so.
+  virtual unsigned CheckKeyFilterTable(unsigned, unsigned*) { return 0; }
 };
 
 class WebAppWindowBase : public WebAppWindowDelegate {
