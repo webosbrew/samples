@@ -124,6 +124,12 @@ class WebViewBase : public WebViewDelegate {
   void ForwardWebOSEvent(WebOSEvent* event);
   void EnableInspectablePage();
   void UpdatePreferences();
+  void SuspendPaintingAndSetVisibilityHidden();
+  void ResumePaintingAndSetVisibilityVisible();
+  void SuspendWebPageDOM();
+  void ResumeWebPageDOM();
+  void SuspendWebPageMedia();
+  void ResumeWebPageMedia();
 
   void SetAppId(const std::string& app_id);
   void SetAppPath(const std::string& app_path);

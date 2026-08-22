@@ -184,6 +184,65 @@ id:
 [org.webosbrew.sample.web.cbe] "PROBE console.log works", source: data:text/html,...
 ```
 
+## Showing and hiding the web window
+
+The web window can be taken off the screen and brought back, and this was measured with
+display captures rather than guessed at:
+
+```cpp
+webview->SuspendPaintingAndSetVisibilityHidden();
+webview->SuspendWebPageDOM();
+webview->SetVisible(false);
+window->SetWindowHostState(webos::NATIVE_WINDOW_MINIMIZED);
+window->Hide();
+// ... later ...
+window->Show();
+window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
+webview->SetVisible(true);
+webview->ResumeWebPageDOM();
+webview->ResumePaintingAndSetVisibilityVisible();
+window->Activate();
+```
+
+Hidden, the surface really is gone - the capture showed the TV falling through to the HDMI
+input behind it. Restored, the page came back **without reloading**: same document, no
+`LoadStarted`, no navigation. So "hand the screen to something else and come back" works
+inside one process, and the page keeps its state across the round trip.
+
+That is the cheap half. The expensive half is what fills the screen while the web window is
+hidden, and there the process layout decides everything.
+
+## Two processes, or one?
+
+**Two apps.** Tested with `media/lgnc` (an ordinary SDL2 sample) as the native app and this
+one as the web app:
+
+* launching the web app over the running native app works, and the native app keeps
+  running in the background;
+* `luna://com.webos.applicationManager/closeByAppId` closes the web app cleanly;
+* **but the screen does not go back.** Closing the web app left the TV showing
+  `com.webos.app.externalinput.av1`, not the native app that was still alive behind it. LSM
+  does not restore a caller;
+* and relaunching the native app to get back gave it **new pids** - a cold restart, not a
+  resume, because the sample implements none of the SAM native lifecycle
+  (`nativeLifeCycleInterfaceVersion`, `handlesRelaunch`, `registerApp`).
+
+So the two-app split is workable but not free: the web app has to explicitly launch the
+native app on its way out, and the native app has to implement the SAM lifecycle or it will
+lose its state every time you come back. That lifecycle work is the real cost of this
+option, not the launching.
+
+**One process.** The constraint is that `WebOSMain()` owns `main()` and the default
+`GMainContext` and never returns, so a second toolkit cannot run a `while (SDL_PollEvent)`
+loop in the usual place. The way around it is the same seam the sample already uses for
+startup: SDL is driven *from* the glib loop - create the window and pump events from a
+`g_timeout_add` on the browser UI thread, so both toolkits live on one thread with one
+loop. Two Wayland surfaces in one process is not itself a problem.
+
+This is reasoning, not a result: it has not been built. If you go that way, the thing to
+check first is whether SDL2 tolerates having its video subsystem initialised somewhere
+other than the real `main()` thread.
+
 ## Combining with native rendering
 
 There is no offscreen path. Nothing in the exported API hands back a GL texture or an
@@ -212,6 +271,7 @@ thread and its own Wayland surface, and the two would then compete for LSM focus
   reach the page on their own has not been tested.
 * **The bridge.** The sample loads no injection and overrides the browser-control slots
   with empty bodies. The section above says what it takes to turn them on.
-* **Lifecycle.** No SAM relaunch/close handling, no `PalmSystem` bridge, no suspend on
-  background - all of which is most of what WAM actually does.
+* **Lifecycle.** No SAM relaunch/close handling and no suspend on background. The calls
+  exist and are wired into the header - see the show/hide section - but nothing drives them,
+  and without the SAM side a relaunch is a cold restart.
 * **webOS 5+.** See the table above.
