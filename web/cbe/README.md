@@ -45,7 +45,7 @@ moment a window or a web view may legally be created.
 
 | release | libcbe | entry point | verdict |
 |---|---|---|---|
-| 1.x, 2.x | absent | - | no engine to link |
+| 1.x, 2.x | absent | - | a different engine entirely - Qt5WebKit, see below |
 | 3.4 - 3.9 | yes | `WebOSMain` | reachable, but a legacy-ABI variant: see below |
 | **4.x** | **yes** | **`WebOSMain`** | **this sample** |
 | 5.x | yes | `webos::WebOSMain::Run` | different entry point and `Initialize` |
@@ -76,7 +76,39 @@ changed `WebViewBase`'s constructor again; webOS 6 added a whole second API unde
 delta rather than a rewrite.
 
 **The hard floor is 3.4**, and it is the library, not the ABI: webOS 1 and 2 have no
-`libcbe.so` at all.
+`libcbe.so` at all. Chromium arrived with webOS 3.
+
+### webOS 1 and 2: Qt5WebKit, and why it is not a variant
+
+Those releases do have a web engine, just not this one:
+
+| | webOS 1.2 / 1.4 | webOS 2.2.3 | webOS 3.4+ |
+|---|---|---|---|
+| Qt | 5.0.0 | 5.2.1 | - |
+| engine | `libQt5WebKit.so.5.0.0` | `libQt5WebKit.so.5.2.0` | `libcbe.so` |
+
+`libQt5WebKitWidgets` is there too, with the whole classic WebKit1 API - `QWebView`,
+`QWebPage`, `QWebFrame`, `QWebSettings` - and a JavaScript bridge that is frankly nicer
+than anything libcbe offers: `QWebFrame::evaluateJavaScript()` returns a value
+synchronously, `addToJavaScriptWindowObject()` hands page JavaScript a real `QObject` with
+slots and properties, and `QWebPage::javaScriptConsoleMessage()` is a console hook. No
+injection to load, no command names to overload.
+
+Two things make it a separate project rather than a variant of this one:
+
+* **Nothing in the firmware uses the widgets API.** Scanning every shared object in the
+  webOS 2.2.3 dump, `libQt5WebKitWidgets.so.5` has zero consumers; WAM reaches WebKit
+  through QML instead (it needs `libQt5Qml`, `libQt5Quick` and `libQt5WebKit`). The dumps
+  cover libraries and not executables, so this is not quite proof - but a shipped,
+  unexercised library is exactly the situation this repo already has a scar from, so the
+  first job would be proving it loads and paints at all.
+* **The NDK cannot build for it.** The buildroot SDK ships Qt **5.15.14** against TVs
+  running 5.0.0 and 5.2.1, and Qt's binary compatibility runs forwards only. It also has no
+  QtWebKit headers at all, QtWebKit having been dropped from Qt after 5.5. That means
+  period-correct headers from upstream plus link stubs - the same trick `web/libcbe` uses -
+  plus `moc` for any object exposed to JavaScript.
+
+A 55LF6310 (webOS 2.2.0) is the set that could settle the first point.
 
 ## What "webOS 4" is actually backed by
 
