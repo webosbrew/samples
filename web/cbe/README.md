@@ -127,10 +127,91 @@ ares-shell -d <device> -r "luna-send -n 1 -w 10000 -f \
 ares-pull -d <device> /tmp/shot.png .
 ```
 
+## Hybrid apps: talking to the page, and being talked to
+
+All of this was checked on the 49LK5900, with a throwaway probe build rather than with the
+sample as committed.
+
+**Native to JS.** `RunJavaScript()` and `RunJavaScriptInAllFrames()` work and take effect
+immediately. Neither returns a value - there is no `...AndReturnResult` in this API.
+
+**JS to native, the cheap way.** `document.title = ...` arrives in the delegate as
+`TitleChanged()`. Setting the title from injected JavaScript and reading it back out is a
+one-line channel that needs no injection and no permissions. Crude, string-only,
+last-write-wins - but it works, and it is enough to get a computed value out of the page.
+
+**JS to native, properly.** libcbe carries Chromium V8 *injections*, and one of them is the
+`PalmSystem` object every webOS web app already uses. Load it before navigating:
+
+```cpp
+webview->Initialize(app_id, app_path, "trusted", "", "", 1920, 1080, false);
+webview->LoadExtension("palmsystem");   // "palmsystem", NOT "v8/palmsystem"
+```
+
+The injection's native functions do not stay inside libcbe - they turn into
+`BrowserControlMsg_Command` / `BrowserControlMsg_Function` IPC, which surfaces in the
+browser process as delegate slots 19 and 20, `HandleBrowserControlCommand()` and
+`HandleBrowserControlFunction()`. Those are *your* overrides. `Function` is synchronous and
+hands you a `std::string*` to fill in, and the value lands back in JavaScript as the return
+value of the call.
+
+So this round trip works today:
+
+```js
+var reply = PalmSystem.getResource('probe-cmd', 'probe-arg');   // -> "native-said-hello"
+```
+```
+[bridge] FUNCTION 'getResource' (1 args)
+[bridge]   arg[0] = 'probe-cmd'
+```
+
+Two things to know. The command names are the injection's, not yours - you are overloading
+`getResource`, `serviceCall`, `activate` and the rest, so a real app JSON-encodes its own
+protocol into one of them. And only the first argument came through on `getResource`, so
+pack everything into that one string. The injection also calls `initialize` and
+`identifier` on startup expecting WAM-shaped answers.
+
+`PalmServiceBridge` is injected too (`new PalmServiceBridge()` yields an object with a
+`call` function), which is the standard path for page JavaScript to reach `luna://`
+services - including one your own native process registers. That is the least hacky bridge
+of the lot, but it was not tested here.
+
+**Capturing console output.** Page `console.log` goes nowhere by default. Add
+`--enable-logging=stderr` to the switch list and it appears on stderr, tagged with the app
+id:
+
+```
+[org.webosbrew.sample.web.cbe] "PROBE console.log works", source: data:text/html,...
+```
+
+## Combining with native rendering
+
+There is no offscreen path. Nothing in the exported API hands back a GL texture or an
+exported surface - `AttachWebContents()` gives the contents to a libcbe-owned Wayland
+window and that is where they are drawn. So a hybrid UI has to be composed at the window
+level, and libcbe exports the pieces for it:
+
+* `WebViewBase::SetTransparentBackground(true)` punches the page through to whatever is
+  behind it. This is how web apps on the TV show hardware video: the decoder owns a plane,
+  the page draws the UI over a transparent hole. Pairing it with `media/smp/acb` is the
+  most likely shape of a native-plus-web app here.
+* `WebAppWindowBase::CreateWindowGroup()` / `AttachToWindowGroup()` with
+  `WindowGroupConfiguration::AddLayer()` put several surfaces into one LSM group with named,
+  ordered layers - WAM's mechanism for overlays.
+* `SetOpacity()` and `WebOSPlatform::SetInputRegion()` control blending and which rectangles
+  take input, so a native surface can stay clickable under a full-screen page.
+
+Neither of those two combinations was tested. What *is* established is the constraint that
+shapes them: `WebOSMain()` owns the process and the default `GMainContext`, so a second
+toolkit (SDL2, say) cannot run its own main loop in the usual way - it would need its own
+thread and its own Wayland surface, and the two would then compete for LSM focus.
+
 ## What is not here
 
 * **Input.** The sample never calls `ForwardWebOSEvent()`, and whether remote-control keys
   reach the page on their own has not been tested.
+* **The bridge.** The sample loads no injection and overrides the browser-control slots
+  with empty bodies. The section above says what it takes to turn them on.
 * **Lifecycle.** No SAM relaunch/close handling, no `PalmSystem` bridge, no suspend on
   background - all of which is most of what WAM actually does.
 * **webOS 5+.** See the table above.

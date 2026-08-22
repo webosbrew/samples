@@ -113,6 +113,14 @@ class WebViewBase : public WebViewDelegate {
   std::string DocumentTitle() const;
   std::string DefaultUserAgent() const;
   void RunJavaScript(const std::string& js);
+  void RunJavaScriptInAllFrames(const std::string& js);
+  // Loads one of libcbe's built-in V8 injections by name ("v8/palmsystem",
+  // "v8/netcast", ...). An injection is what gives page JavaScript something to
+  // call that reaches native code: its native functions land in the browser
+  // process as HandleBrowserControlCommand / HandleBrowserControlFunction.
+  void LoadExtension(const std::string& name);
+  void ClearExtensions();
+  void AddUserStyleSheet(const std::string& css);
   void ForwardWebOSEvent(WebOSEvent* event);
   void EnableInspectablePage();
   void UpdatePreferences();
