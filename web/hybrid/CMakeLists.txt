@@ -28,5 +28,5 @@ webos_add_ipk(
         APPID org.webosbrew.sample.web.hybrid
         TITLE "SDL + WebView (webOS 4)"
         COLOR "#7E57C2"
-        WEBOS_VERSIONS ">=4, <5"
+        WEBOS_VERSIONS ">=4, <4.10"
         MEDIA "${CMAKE_CURRENT_SOURCE_DIR}/page.html")

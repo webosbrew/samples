@@ -70,10 +70,29 @@ Of the 30 libcbe symbols this sample needs, 11 are absent from a webOS 3.4 dump 
 them either old-ABI spellings or the newer split-init calls. So webOS 3 wants a variant
 built `-D_GLIBCXX_USE_CXX11_ABI=0` against an older header, not a newer runtime.
 
-**Above.** webOS 5 replaced the free `WebOSMain()` with a `webos::WebOSMain` class and
-changed `WebViewBase`'s constructor again; webOS 6 added a whole second API under
-`neva_app_runtime`. The `webos::` API itself survives to 11.2, so that variant is a small
-delta rather than a rewrite.
+**Above.** `webos::WebViewBase` exists all the way to 11.2, but it is not one API - how you
+construct and initialise it moves five times:
+
+| release | constructor | `Initialize(...)` | entry point |
+|---|---|---|---|
+| 3.4 - 3.9 | `WebViewBase(int, int)` | *(none)* | `WebOSMain()`, pre-C++11 strings |
+| **4.0 - 4.9** | **`WebViewBase()`** | **`(5 str, int, int, bool)`** | **`WebOSMain()`** - what this sample builds |
+| 4.10 | `WebViewBase()` | `(5 str, int, int, bool, bool)` | `WebOSMain()` |
+| 5.x | `WebViewBase(int, int)` | `(5 str, int, int, bool, WebViewMode, bool)` | `webos::WebOSMain::Run()` |
+| 6.4 - 11.2 | `WebViewBase(bool, int, int)` | `(5 str, bool)` | `webos::WebOSMain::Run()` |
+
+Everything else is stable: of the 30 libcbe symbols this sample uses, the *same three* are
+the only ones missing on every release from 5.3.1 to 11.2 - the free `WebOSMain`, the
+no-argument constructor, and that `Initialize`. The other 27 are untouched across six
+generations.
+
+So the interesting variant is not webOS 5, it is **6.4 through 11.2**: one build covers
+every set from 2021 to 2025, because the constructor and `Initialize` do not move again
+after 6.4. (Those releases also carry a second, parallel API under `neva_app_runtime`,
+which is the one with public upstream headers.)
+
+The upper bound of *this* sample is therefore 4.9, not 5 - the break is `Initialize`
+gaining one `bool` at 4.10, not the webOS 5 rewrite.
 
 **The hard floor is 3.4**, and it is the library, not the ABI: webOS 1 and 2 have no
 `libcbe.so` at all. Chromium arrived with webOS 3.
@@ -113,11 +132,17 @@ A 55LF6310 (webOS 2.2.0) is the set that could settle the first point.
 ## What "webOS 4" is actually backed by
 
 The `-verify` firmware set has exactly two webOS 4 dumps, 4.4.2 and 4.9.7, and both are
-clean. There is no dump anywhere between 4.0 and 4.3, so that part of the declared
-`>=4, <5` range rests on the API being unchanged across the generation rather than on
-evidence. Hardware testing was on a 49LK5900 at 4.4.3.
+clean. There is no dump anywhere between 4.0 and 4.3, so that part of the declared range
+rests on the API being unchanged across the generation rather than on evidence. Hardware
+testing was on a 49LK5900 at 4.4.3.
 
-Read the floor as: **4.4.2 verified, 4.0 assumed.**
+Read it as: **4.4.2 and 4.9.7 verified, 4.0 to 4.3 assumed, 4.10 known broken.**
+
+That last one is worth dwelling on, because `-verify` cannot see it: the verifier ships no
+4.10 dump, so `>=4, <5` and `>=4, <4.10` check exactly the same two firmwares and both pass.
+The break was only visible in the larger symbol set under
+`dev-toolbox-cli/common/data`. A clean `-verify` means "nothing missing in the dumps we
+have", which is a narrower claim than it looks.
 
 ## Where the headers came from
 

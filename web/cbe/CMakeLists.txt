@@ -8,8 +8,10 @@
 # webOS 5 replaced the free WebOSMain() with a webos::WebOSMain class and changed
 # the constructor again. The hard floor is 3.4: webOS 1 and 2 have no libcbe.
 #
-# Within webOS 4, only 4.4.2 and 4.9.7 have firmware dumps to verify against;
-# 4.0 to 4.3 is assumed, not checked. See README.md.
+# The upper bound is 4.9, not 5: Initialize() gains one bool at 4.10, well before
+# the webOS 5 rewrite. -verify cannot catch that - it has no 4.10 dump - so the
+# range is set from the larger symbol set in dev-toolbox-cli. Within webOS 4 only
+# 4.4.2 and 4.9.7 have dumps at all; 4.0 to 4.3 is assumed. See README.md.
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
@@ -32,4 +34,4 @@ webos_add_ipk(
         APPID org.webosbrew.sample.web.cbe
         TITLE "CBE WebView (webOS 4)"
         COLOR "#4285F4"
-        WEBOS_VERSIONS ">=4, <5")
+        WEBOS_VERSIONS ">=4, <4.10")
