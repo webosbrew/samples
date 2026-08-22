@@ -284,9 +284,37 @@ one lands in the middle of a teardown it has not finished - a null-pointer segfa
 `ShowNativeView` sitting directly under `RenderViewHostImpl::OnClose()` in the backtrace.
 A one-shot `g_idle_add` is enough: the switch then happens once libcbe is back at idle.
 
-**Not verified: the remote itself.** Every transition above was driven from a test hook
-calling the same functions a key press would. Synthetic key injection through `/dev/uinput`
-does not work here - the device registers, but LSM does not route its events to the app -
-so the `SDLK_RETURN` and Back paths have not been exercised with real hardware. The rest of
-the repo's SDL samples do handle the remote on this TV, so the mechanism is sound; this
-particular wiring is simply untested.
+### Testing the remote without a remote
+
+`/dev/uinput` is a dead end - a virtual device registers, but LSM does not route its events
+to the app. What does work is the service the phone-remote app drives:
+
+```sh
+ares-shell -d <device> -r \
+  'luna-send -n 1 -f luna://com.webos.service.networkinput/test/sendKeyCode "{\"keyCode\":28}"'
+```
+
+It takes **evdev** codes, not webOS or JavaScript ones. `28` is `KEY_ENTER`, and the app
+logs `[sdl] key 13` - `SDLK_RETURN` - followed by `[switch] native -> web`. So the OK-key
+path is verified. (`13` also injects, arriving as SDL keysym `61`, which is a reminder that
+the mapping is not identity.)
+
+`ls-monitor -i com.webos.service.networkinput` lists the rest, including
+`getPointerInputSocket` for the magic-remote pointer.
+
+**Still not verified: Back.** Codes 158 (`KEY_BACK`), 174 (`KEY_EXIT`) and 1 (`KEY_ESC`)
+inject without error and reach nothing, in either view, and the app does not close either -
+so they are being filtered before any window sees them. `sendSpecialKey` cannot help:
+strings in `/usr/sbin/network-input-service` show its table covers media and menu keys with
+no BACK or EXIT in it.
+
+That leaves the Back path untested rather than broken - a real remote may well deliver what
+this service will not. The web window does ask for the key, using the same property names
+WAM uses:
+
+```cpp
+window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
+window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_EXIT", "true");
+```
+
+Those names are not documented anywhere; they come out of `libWebAppMgr.so`.

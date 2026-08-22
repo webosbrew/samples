@@ -157,6 +157,12 @@ void ShowWebView() {
     g_window = new HybridWindow();
     g_window->InitWindow(1920, 1080);
     g_window->SetWindowProperty("appId", kAppId);
+    // Without these the TV keeps Back and Exit for itself and the web view never
+    // sees them - the same access policy the SDL side asks for through
+    // SDL_HINT_WEBOS_ACCESS_POLICY_KEYS_*. The property names come out of
+    // libWebAppMgr.so, which is the only place they are written down.
+    g_window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
+    g_window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_EXIT", "true");
     g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
     // The form needs somewhere to type from a remote.
     g_window->SetUseVirtualKeyboard(true);
