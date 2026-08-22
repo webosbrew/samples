@@ -21,9 +21,14 @@
 </main>
 <script>
   // PalmSystem is libcbe's injected bridge - the app loads it with
-  // LoadExtension("palmsystem"). close() arrives in native code as
-  // WebViewDelegate::Close(), which is a callback meant for exactly this and
-  // costs the page nothing else.
+  // LoadExtension("palmsystem"). platformBack() arrives in native code as
+  // HandleBrowserControlCommand("platformBack"), which is a notification and
+  // nothing more, so the page stays alive and can be shown again.
+  //
+  // Not close(): that one really closes. It comes out of
+  // RenderViewHostImpl::OnClose() with the render view already being destroyed,
+  // which is fine for an app that is quitting and wrong for one going away for a
+  // moment.
   function exitToNative() {
     if (typeof PalmSystem === 'undefined') {
       document.getElementById('hint').id = 'warn';
@@ -31,7 +36,7 @@
           'PalmSystem missing - the app did not load the injection';
       return;
     }
-    PalmSystem.close();
+    PalmSystem.platformBack();
   }
 
   document.getElementById('exit').addEventListener('click', exitToNative);

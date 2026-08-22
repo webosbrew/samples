@@ -50,23 +50,40 @@ Coming back resumes rather than reloads. That is the whole reason for suspending
 destroying: the second visit keeps whatever state the page had, and the log shows no
 navigation at all.
 
+Two things about coming back are not obvious, and both showed up as a white screen on the
+second visit with the page alive and running script behind it.
+
+**`Hide()` destroys the window, it does not unmap it.** The log is explicit - `Wayland
+Window(id:1 widget:0xc1f28) will be destroyed` - and the next `Show()` builds a new one,
+`id:2`. Web contents attached to the old window composite nowhere. So
+`AttachWebContents()` has to run on *every* show, not just the first.
+
+**It has to run before `Show()`, not after.** Attaching afterwards leaves the page loading
+normally, reporting `load finished`, and never appearing.
+
+There is no matching `DetachWebContents()` on the way out. Calling it there segfaults on a
+null pointer: by then the contents it would detach are already gone.
+
 ## How the page asks to leave
 
 Through libcbe's own callbacks. The app loads the `palmsystem` injection, which gives page
 JavaScript real entry points, and two of them arrive in the delegate:
 
-| JavaScript | native |
-|---|---|
-| `PalmSystem.close()` | `WebViewDelegate::Close()` |
-| `PalmSystem.platformBack()` | `HandleBrowserControlCommand("platformBack")` |
+| JavaScript | native | what it means |
+|---|---|---|
+| `PalmSystem.platformBack()` | `HandleBrowserControlCommand("platformBack")` | a notification - nothing is torn down |
+| `PalmSystem.close()` | `WebViewDelegate::Close()` | a real close - the render view is going away |
 
 ```js
-function exitToNative() { PalmSystem.close(); }
+function exitToNative() { PalmSystem.platformBack(); }
 ```
 
-`Close()` is the delegate's own dedicated slot - a callback that exists for exactly this -
-so nothing is overloaded, nothing has to be parsed out of a shared channel, and the page
-carries no state between visits.
+**Not `close()`.** It reads like the right call and it is not. The callback arrives from
+`RenderViewHostImpl::OnClose()` with the render view already being destroyed, which is
+correct for a page that is quitting and wrong for one stepping aside for a moment - the
+next visit gets a dead view. `platformBack()` is a plain notification, so the page survives
+to be shown again. `Close()` is still handled, so a page that really does close itself
+hands the screen back rather than leaving a dead window up.
 
 Turning the injection on is two lines, and both matter:
 
@@ -123,6 +140,12 @@ Verified on a 49LK5900 (webOS 4.4.3): both views render full-screen, the switch 
 both directions, the page's exit button reaches native code as `WebViewDelegate::Close()`,
 and re-entering the web view resumes the existing page without reloading. The SDL view keeps
 animating after coming back.
+
+Anything that changes the window or the web view must also be **deferred out of a delegate
+callback**. Those callbacks run inside libcbe's own call stack, and switching views from
+one lands in the middle of a teardown it has not finished - a null-pointer segfault, with
+`ShowNativeView` sitting directly under `RenderViewHostImpl::OnClose()` in the backtrace.
+A one-shot `g_idle_add` is enough: the switch then happens once libcbe is back at idle.
 
 **Not verified: the remote itself.** Every transition above was driven from a test hook
 calling the same functions a key press would. Synthetic key injection through `/dev/uinput`

@@ -29,6 +29,9 @@
 
 extern "C" int WebOSMain(int argc, const char** argv);
 
+// Only the webOS fork of SDL has this, and only from webOS 4 on.
+extern "C" SDL_bool SDL_webOSCursorVisibility(SDL_bool visible) __attribute__((weak));
+
 namespace {
 
 const char kAppId[] = "org.webosbrew.sample.web.hybrid";
@@ -39,6 +42,7 @@ std::string g_app_path;
 
 class HybridWebView;
 void ShowNativeView();
+void RequestNativeView();
 
 // The page asks to leave through libcbe's own callbacks, not through a side
 // effect of some UI property. Loading the "palmsystem" injection gives page
@@ -67,17 +71,22 @@ class HybridWebView : public webos::WebViewBase {
   void DidFirstFrameFocused() override {}
   void LoadVisuallyCommitted() override {}
   void NavigationHistoryChanged() override {}
-  // PalmSystem.close(): the page is done and wants to be dismissed.
+  // PalmSystem.close(): a real close. Chromium means it - the callback arrives
+  // from RenderViewHostImpl::OnClose() and the render view is being destroyed -
+  // so this is the wrong way to say "hide me, I will be back". The page uses
+  // platformBack for that; this is kept so a page that does close itself still
+  // hands the screen back rather than leaving a dead window up.
   void Close() override {
-    puts("[web] page called PalmSystem.close()");
-    ShowNativeView();
+    puts("[web] page closed itself");
+    RequestNativeView();
   }
 
-  // PalmSystem.platformBack(): a Back gesture the page chose not to consume.
+  // PalmSystem.platformBack(): a Back gesture, and only a notification - nothing
+  // is torn down, so the page survives to be shown again.
   void HandleBrowserControlCommand(const std::string& command,
                                    const std::vector<std::string>&) override {
     printf("[web] browser control '%s'\n", command.c_str());
-    if (command == "platformBack") ShowNativeView();
+    if (command == "platformBack") RequestNativeView();
   }
   bool DecidePolicyForResponse(bool, int, const std::string&, const std::string&) override {
     return false;
@@ -109,6 +118,10 @@ SDL_Renderer* g_sdl_renderer;
 bool g_native_visible;
 int g_frame;
 
+// Where "open the web view" lives on screen. The remote's pointer gives SDL
+// ordinary mouse events, so the same rectangle serves a click and a wheel press.
+const SDL_Rect kOpenButton = {660, 470, 600, 140};
+
 void DrawNativeView() {
   // Something obviously native and obviously alive, so it is clear at a glance
   // which of the two views is on screen.
@@ -117,10 +130,24 @@ void DrawNativeView() {
   SDL_SetRenderDrawColor(g_sdl_renderer, pulse, pulse / 2, 120, 255);
   SDL_RenderClear(g_sdl_renderer);
 
-  SDL_SetRenderDrawColor(g_sdl_renderer, 255, 255, 255, 255);
+  // A moving bar, so a still frame still shows the loop is running.
+  SDL_SetRenderDrawColor(g_sdl_renderer, 255, 255, 255, 90);
   const int bar = 40 + (g_frame % 120) * 8;
-  SDL_Rect r = {200, 500, bar, 80};
-  SDL_RenderFillRect(g_sdl_renderer, &r);
+  SDL_Rect moving = {200, 240, bar, 40};
+  SDL_RenderFillRect(g_sdl_renderer, &moving);
+
+  // The button. Highlighted while the pointer is over it, so it is obvious the
+  // app is seeing the remote at all.
+  int mx = 0, my = 0;
+  SDL_GetMouseState(&mx, &my);
+  const SDL_Point p = {mx, my};
+  const bool hot = SDL_PointInRect(&p, &kOpenButton) == SDL_TRUE;
+  SDL_SetRenderDrawColor(g_sdl_renderer, hot ? 0x42 : 0x20, hot ? 0x85 : 0x40,
+                         hot ? 0xf4 : 0x90, 255);
+  SDL_RenderFillRect(g_sdl_renderer, &kOpenButton);
+  SDL_SetRenderDrawColor(g_sdl_renderer, 255, 255, 255, 255);
+  SDL_RenderDrawRect(g_sdl_renderer, &kOpenButton);
+
   SDL_RenderPresent(g_sdl_renderer);
   ++g_frame;
 }
@@ -158,7 +185,6 @@ void ShowWebView() {
     // Initialize() above, and the name is "palmsystem", not "v8/palmsystem".
     g_webview->LoadExtension("palmsystem");
     g_webview->UpdatePreferences();
-    g_window->AttachWebContents(g_webview->GetWebContents());
   } else {
     // Second time round the page is still loaded - only woken up.
     g_webview->ResumeWebPageDOM();
@@ -166,6 +192,13 @@ void ShowWebView() {
   }
 
   g_webview->SetVisible(true);
+
+  // Every time, not just the first, and before Show(). Hide() does not unmap the
+  // window - it destroys it, "Wayland Window(id:1) will be destroyed" - so the
+  // next Show() builds a fresh one and contents left attached to the old window
+  // composite nowhere. Attaching after Show() does not work either: the page
+  // loads and never appears.
+  g_window->AttachWebContents(g_webview->GetWebContents());
   g_window->Show();
   g_window->Activate();
   g_web_visible = true;
@@ -188,6 +221,8 @@ void ShowNativeView() {
       g_webview->SuspendPaintingAndSetVisibilityHidden();
       g_webview->SuspendWebPageDOM();
       g_webview->SetVisible(false);
+      // No DetachWebContents() here. It segfaults: by the time this runs the
+      // contents libcbe would detach are already gone, and it dereferences null.
       g_window->SetWindowHostState(webos::NATIVE_WINDOW_MINIMIZED);
       g_window->Hide();
       g_web_visible = false;
@@ -198,12 +233,32 @@ void ShowNativeView() {
   }
 }
 
+// Delegate callbacks arrive *inside* libcbe's own call stack - Close() comes
+// straight out of RenderViewHostImpl::OnClose() - so tearing the window down
+// from one lands in the middle of a teardown libcbe has not finished. It
+// segfaults on a null pointer. Bouncing through the loop first means the switch
+// happens once libcbe is back at idle and its own state is consistent.
+gboolean SwitchToNativeLater(gpointer) {
+  ShowNativeView();
+  return G_SOURCE_REMOVE;
+}
+
+void RequestNativeView() { g_idle_add(SwitchToNativeLater, NULL); }
+
 // ------------------------------------------------------------- the one loop
 
 gboolean Pump(gpointer) {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
     if (e.type == SDL_QUIT) return G_SOURCE_REMOVE;
+
+    if (e.type == SDL_MOUSEBUTTONDOWN) {
+      printf("[sdl] click at %d,%d\n", e.button.x, e.button.y);
+      // Anywhere is fine: the rectangle is an affordance, not a hit test, and a
+      // TV pointer is imprecise enough that demanding accuracy is unkind.
+      if (g_native_visible) ShowWebView();
+      continue;
+    }
     if (e.type != SDL_KEYDOWN) continue;
     printf("[sdl] key %d\n", static_cast<int>(e.key.keysym.sym));
     switch (e.key.keysym.sym) {
@@ -257,8 +312,13 @@ gboolean StartApp(gpointer) {
     printf("[sdl] SDL_CreateRenderer failed: %s\n", SDL_GetError());
     return G_SOURCE_REMOVE;
   }
+  // The remote's pointer is a mouse as far as SDL is concerned, but the cursor
+  // has to be asked for. Weakly linked: webOS 3 and older have the hints but not
+  // this call, and a hard reference would stop the app loading there.
+  if (SDL_webOSCursorVisibility != NULL) SDL_webOSCursorVisibility(SDL_TRUE);
+
   g_native_visible = true;
-  puts("[sdl] native view up - OK/Enter opens the web view");
+  puts("[sdl] native view up - click, or press OK/Enter, to open the web view");
 
   g_timeout_add(16, Pump, NULL);
   return G_SOURCE_REMOVE;
