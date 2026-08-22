@@ -195,8 +195,8 @@ hard to diagnose from the TV side.
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
-| `web/hybrid` | 4.x | **verified on hardware** - 49LK5900, webOS 4.4.3: SDL2 and the web view both render full-screen from one process, switching works both ways, and the page's exit button reaches native code as `WebViewDelegate::Close()`. The transitions were driven by a test hook, not by the remote - key delivery is untested |
-| `web/cbe` | 4.x | **verified on hardware** - 49LK5900, webOS 4.4.3: the window registers with LSM and SAM as the foreground card, and a display capture shows the page rendered full-screen at 1920x1080. Input and lifecycle are not implemented |
+| `web/hybrid` | 4.4+ | **verified on hardware** - 49LK5900, webOS 4.4.3: SDL2 and the web view both render full-screen from one process, switching works both ways, and the page's exit button reaches native code as `WebViewDelegate::Close()`. The transitions were driven by a test hook, not by the remote - key delivery is untested |
+| `web/cbe` | 4.4+ | **verified on hardware** - 49LK5900, webOS 4.4.3: the window registers with LSM and SAM as the foreground card, and a display capture shows the page rendered full-screen at 1920x1080. Input and lifecycle are not implemented |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 
 ## What a `Play()` that returns true does not tell you

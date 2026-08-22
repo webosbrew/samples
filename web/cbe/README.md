@@ -46,20 +46,46 @@ moment a window or a web view may legally be created.
 | release | libcbe | entry point | verdict |
 |---|---|---|---|
 | 1.x, 2.x | absent | - | no engine to link |
-| 3.4 - 3.9 | yes | `WebOSMain` | libstdc++ 6.0.19: no C++11 `std::string` ABI |
+| 3.4 - 3.9 | yes | `WebOSMain` | reachable, but a legacy-ABI variant: see below |
 | **4.x** | **yes** | **`WebOSMain`** | **this sample** |
 | 5.x | yes | `webos::WebOSMain::Run` | different entry point and `Initialize` |
 | 6.x - 11.x | yes | `webos::WebOSMain::Run`, plus `neva_app_runtime` | a second, parallel API |
 
-Both bounds are ABI, not caution. Below: libcbe's own exports are mangled with
-`std::__cxx11::basic_string`, but webOS 3's system libstdc++ does not export
-`GLIBCXX_3.4.21`, so nothing can call this API there without statically linking a newer
-runtime. Above: webOS 5 replaced the free `WebOSMain()` with a `webos::WebOSMain` class and
-changed `WebViewBase`'s constructor, and webOS 6 added a whole second API under
-`neva_app_runtime`. Those want their own variant rather than a wider range on this one.
+Both bounds are ABI, not caution, and neither is a wall - each is a build variant, the same
+way `media/smp/common` is built four times for four generations of `StarfishMediaAPIs`.
 
-The `webos::` API itself is present unchanged from 3.4 all the way to 11.2, so a webOS 5+
-variant is a small delta, not a rewrite.
+**Below.** webOS 3's libcbe is the pre-C++11 `std::string` ABI throughout - there is not one
+`__cxx11` symbol in the whole library - and it predates the split constructor:
+
+| | webOS 3.4 | webOS 4.4 |
+|---|---|---|
+| `std::string` | `std::basic_string` | `std::__cxx11::basic_string` |
+| construction | `WebViewBase(int w, int h)` | `WebViewBase()` then `Initialize(...)` |
+| window setup | `Resize()` + `Show()` | `InitWindow(w, h)` + `Activate()` |
+| absent on 3.4 | | `SetAppPath`, `LoadExtension`, `UpdatePreferences`, `SetWindowProperty`* |
+
+\* `SetWindowProperty` and `SetCustomCursor` do exist on 3.4, but with old-ABI strings.
+
+Of the 30 libcbe symbols this sample needs, 11 are absent from a webOS 3.4 dump - all of
+them either old-ABI spellings or the newer split-init calls. So webOS 3 wants a variant
+built `-D_GLIBCXX_USE_CXX11_ABI=0` against an older header, not a newer runtime.
+
+**Above.** webOS 5 replaced the free `WebOSMain()` with a `webos::WebOSMain` class and
+changed `WebViewBase`'s constructor again; webOS 6 added a whole second API under
+`neva_app_runtime`. The `webos::` API itself survives to 11.2, so that variant is a small
+delta rather than a rewrite.
+
+**The hard floor is 3.4**, and it is the library, not the ABI: webOS 1 and 2 have no
+`libcbe.so` at all.
+
+## What "webOS 4" is actually backed by
+
+The `-verify` firmware set has exactly two webOS 4 dumps, 4.4.2 and 4.9.7, and both are
+clean. There is no dump anywhere between 4.0 and 4.3, so that part of the declared
+`>=4, <5` range rests on the API being unchanged across the generation rather than on
+evidence. Hardware testing was on a 49LK5900 at 4.4.3.
+
+Read the floor as: **4.4.2 verified, 4.0 assumed.**
 
 ## Where the headers came from
 

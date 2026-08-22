@@ -5,7 +5,8 @@
 # libcbe already runs on its browser UI thread, which puts both toolkits on one
 # thread and makes switching views a plain function call.
 #
-# webOS 4 only, for the same ABI reasons as web/cbe.
+# webOS 4 only, for the same ABI reasons as web/cbe - and verified only from 4.4.2
+# up, since no earlier webOS 4 dump exists.
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED glib-2.0)

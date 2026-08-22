@@ -1,13 +1,15 @@
 # The smallest thing that puts a web page on screen: hand the process to
 # Chromium, get called back, load a URL.
 #
-# webOS 4 only, and that bound is real rather than cautious. Below it, webOS 3
-# ships a libstdc++ without the C++11 std::string ABI that libcbe's own exports
-# are mangled with, so nothing can call this API there without statically linking
-# a newer runtime. Above it, webOS 5 replaced the free WebOSMain() with a
-# webos::WebOSMain class and changed WebViewBase's constructor, and webOS 6 added
-# a second, parallel API under neva_app_runtime - so 5 and up want their own
-# variant of this sample rather than a wider version range on this one.
+# webOS 4 only, and both bounds are build variants rather than walls - the same
+# situation as media/smp/common, which is built four times for four generations.
+# Below, webOS 3's libcbe is the pre-C++11 std::string ABI throughout and predates
+# the WebViewBase() + Initialize() split, so it wants a legacy variant. Above,
+# webOS 5 replaced the free WebOSMain() with a webos::WebOSMain class and changed
+# the constructor again. The hard floor is 3.4: webOS 1 and 2 have no libcbe.
+#
+# Within webOS 4, only 4.4.2 and 4.9.7 have firmware dumps to verify against;
+# 4.0 to 4.3 is assumed, not checked. See README.md.
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
