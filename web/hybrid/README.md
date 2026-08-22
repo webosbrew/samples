@@ -278,6 +278,9 @@ the redirect never loaded. Both views render full-screen, and the switch works i
 directions. The SDL view keeps
 animating after coming back.
 
+Driven entirely by injected remote keys, one at a time, comparing frames pixel-by-pixel -
+which is how the focus limitation above turned up. By pointer the same flow is two clicks.
+
 Anything that changes the window or the web view must also be **deferred out of a delegate
 callback**. Those callbacks run inside libcbe's own call stack, and switching views from
 one lands in the middle of a teardown it has not finished - a null-pointer segfault, with
@@ -335,3 +338,24 @@ window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_EXIT", "true");
 ```
 
 Those names are not documented anywhere; they come out of `libWebAppMgr.so`.
+
+### The web view starts with nothing focused
+
+By remote the flow is **OK, Tab, Tab, Tab, Enter**, not OK then Enter. Until Tab is pressed
+the page has no focused element, so Enter does nothing; Tab does not merely move focus, it
+creates it. After that Enter activates a focused button, though it still never submits from
+a text input. By pointer it is one click, because mouse events carry their own target.
+
+`autofocus`, a page-side `.focus()` on load, and `WebViewBase::SetFocus(true)` were all
+tried and none helped. libcbe hints at why:
+
+```
+ERROR:webos_view.h(123)] Not implemented reached in
+  virtual void WebOSView::OnWidgetActivationChanged(views::Widget*, bool)
+```
+
+Widget activation is a stub in this build, and in Chromium's views that is what hands focus
+to the `FocusManager` - which would explain a web view that takes pointer input and ignores
+the keyboard until focus traversal forces the issue. Untested next step:
+`SetCSSNavigationEnabled(true)`, webOS's own spatial navigation. There is a fuller write-up
+on the pull request.
