@@ -3,10 +3,17 @@
 Small, readable sample apps for LG webOS native homebrew. Each one does a single thing and
 is meant to be read top to bottom, without a framework in the way.
 
-The media samples feed raw elementary streams straight into the TV's hardware decoder, with
-SDL2 owning the window and the remote control. There are two entirely different ways to
-reach that decoder, and all of them get samples: **starfish-media-pipeline**
-(`libplayerAPIs`), **NDL**, and **LGNC** (the LG NetCast Open API).
+Most of them are media samples: they feed raw elementary streams straight into the TV's
+hardware decoder, with SDL2 owning the window and the remote control. There are three
+entirely different ways to reach that decoder, and all of them get samples:
+**starfish-media-pipeline** (`libplayerAPIs`), **NDL**, and **LGNC** (the LG NetCast Open
+API).
+
+`web/cbe` is the odd one out. It links `libcbe.so` - the TV's own Chromium, the engine
+every web app on the box already runs inside - and puts a real web view in a *native* app,
+with no WAM and no web app package. There is no SDK for that library; the sample's headers
+were reconstructed from firmware symbol tables and from the vtables of WAM's own
+subclasses, and `web/cbe/README.md` writes down how.
 
 ## What is here
 
@@ -21,6 +28,8 @@ media/
     esplayer/      libndl-directmedia2, NDL_Esplayer* - webOS 2.x to 3.4
     directmedia/   libNDL_directmedia, NDL_Direct* - webOS 3.5+, built for API v1 and v2
   lgnc/            liblgncopenapi, LGNC_DIRECT* - webOS 1 to 4, one binary for all of them
+web/
+  cbe/             libcbe - the TV's own Chromium, embedded in a native app
 ```
 
 The same two files play through all three stacks. Comparing the three `main.c` files is the
@@ -104,11 +113,12 @@ and skips everything else.
 
 ### Icons
 
-`assets/icons/<name>.png` carries white artwork on transparency - the API name, a play
-mark, and which variant it is - and no colour at all. Each sample passes a Material 500 colour to `webos_add_ipk`, which
+`assets/icons/<name>.png` carries white artwork on transparency - the API name, a mark (a
+play triangle for the media samples, a globe for the web ones), and which variant it is -
+and no colour at all. Each sample passes a Material 500 colour to `webos_add_ipk`, which
 writes it to both `iconColor` and `bgColor` in `appinfo.json`, and webOS paints that behind
 the glyph. Families are grouped by hue: blues for starfish, greens for NDL, orange for
-LGNC.
+LGNC, blue for the web view.
 
 Both fields are set deliberately: `bgColor` is the tile background, while `iconColor` fills
 behind the icon itself - without it the launcher's default shows through the glyph's
@@ -181,6 +191,7 @@ hard to diagnose from the TV side.
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
+| `web/cbe` | 4.x | **verified on hardware** - 49LK5900, webOS 4.4.3: the window registers with LSM and SAM as the foreground card, and a display capture shows the page rendered full-screen at 1920x1080. Input and lifecycle are not implemented |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 
 ## What a `Play()` that returns true does not tell you
