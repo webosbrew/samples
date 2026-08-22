@@ -11,6 +11,7 @@
   button { font: inherit; font-size: 36px; padding: 20px 56px; border: 0;
            border-radius: 12px; background: #4285f4; color: #fff; cursor: pointer; }
   button:focus { outline: 6px solid #ffffff88; }
+  #warn { color: #ffb4a2; }
 </style>
 <main>
   <h1>web view</h1>
@@ -19,20 +20,24 @@
   <p id="hint">or press Back on the remote</p>
 </main>
 <script>
-  // Setting document.title is the whole channel back to native code: the app
-  // sees it as WebViewDelegate::TitleChanged and switches views. Crude, but it
-  // needs no injection and no permissions.
-  function exitToNative() { document.title = 'hybrid:exit'; }
+  // PalmSystem is libcbe's injected bridge - the app loads it with
+  // LoadExtension("palmsystem"). close() arrives in native code as
+  // WebViewDelegate::Close(), which is a callback meant for exactly this and
+  // costs the page nothing else.
+  function exitToNative() {
+    if (typeof PalmSystem === 'undefined') {
+      document.getElementById('hint').id = 'warn';
+      document.getElementById('warn').textContent =
+          'PalmSystem missing - the app did not load the injection';
+      return;
+    }
+    PalmSystem.close();
+  }
 
   document.getElementById('exit').addEventListener('click', exitToNative);
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ') exitToNative();
     if (e.key === 'Backspace' || e.key === 'Escape') exitToNative();
-  });
-  // The exit signal is a title change, so the title has to be put back when the
-  // page is shown again - otherwise there is no edge for native code to see.
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) document.title = 'hybrid web view';
   });
 
   console.log('hybrid page ready');

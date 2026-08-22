@@ -40,11 +40,15 @@ std::string g_app_path;
 class HybridWebView;
 void ShowNativeView();
 
-// The page asks to leave by setting document.title, which arrives here as
-// TitleChanged(). That needs no injection, no permissions and no extra IPC - it
-// is the cheapest JavaScript-to-native channel libcbe offers. web/cbe/README.md
-// describes the two heavier ones.
-const char kExitTitle[] = "hybrid:exit";
+// The page asks to leave through libcbe's own callbacks, not through a side
+// effect of some UI property. Loading the "palmsystem" injection gives page
+// JavaScript real entry points, and two of them land here:
+//
+//   PalmSystem.close()         -> WebViewDelegate::Close()
+//   PalmSystem.platformBack()  -> HandleBrowserControlCommand("platformBack")
+//
+// Close() is the delegate's own dedicated slot, so nothing is overloaded and
+// nothing has to be parsed out of a shared channel.
 
 bool g_web_visible;
 
@@ -52,12 +56,6 @@ class HybridWebView : public webos::WebViewBase {
  public:
   void TitleChanged(const std::string& title) override {
     printf("[web] title '%s'\n", title.c_str());
-    // Only while the page is actually on screen: a title left over from a
-    // previous visit must not bounce the user straight back out.
-    if (title == kExitTitle && g_web_visible) {
-      puts("[web] page asked to exit");
-      ShowNativeView();
-    }
   }
   void LoadFinished(const std::string&) override { puts("[web] load finished"); }
   void LoadFailed(const std::string& url, int code, const std::string& desc) override {
@@ -69,7 +67,18 @@ class HybridWebView : public webos::WebViewBase {
   void DidFirstFrameFocused() override {}
   void LoadVisuallyCommitted() override {}
   void NavigationHistoryChanged() override {}
-  void Close() override { ShowNativeView(); }
+  // PalmSystem.close(): the page is done and wants to be dismissed.
+  void Close() override {
+    puts("[web] page called PalmSystem.close()");
+    ShowNativeView();
+  }
+
+  // PalmSystem.platformBack(): a Back gesture the page chose not to consume.
+  void HandleBrowserControlCommand(const std::string& command,
+                                   const std::vector<std::string>&) override {
+    printf("[web] browser control '%s'\n", command.c_str());
+    if (command == "platformBack") ShowNativeView();
+  }
   bool DecidePolicyForResponse(bool, int, const std::string&, const std::string&) override {
     return false;
   }
@@ -144,6 +153,10 @@ void ShowWebView() {
     g_webview->SetFileAccessBlocked(false);
     g_webview->SetAllowUniversalAccessFromFileUrls(true);
     g_webview->SetLocalStorageEnabled(true);
+    // Without this the page has no PalmSystem object and therefore no way to
+    // reach native code at all. It needs the "trusted" trust level passed to
+    // Initialize() above, and the name is "palmsystem", not "v8/palmsystem".
+    g_webview->LoadExtension("palmsystem");
     g_webview->UpdatePreferences();
     g_window->AttachWebContents(g_webview->GetWebContents());
   } else {

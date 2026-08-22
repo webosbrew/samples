@@ -137,12 +137,7 @@ sample as committed.
 **Native to JS.** `RunJavaScript()` and `RunJavaScriptInAllFrames()` work and take effect
 immediately. Neither returns a value - there is no `...AndReturnResult` in this API.
 
-**JS to native, the cheap way.** `document.title = ...` arrives in the delegate as
-`TitleChanged()`. Setting the title from injected JavaScript and reading it back out is a
-one-line channel that needs no injection and no permissions. Crude, string-only,
-last-write-wins - but it works, and it is enough to get a computed value out of the page.
-
-**JS to native, properly.** libcbe carries Chromium V8 *injections*, and one of them is the
+**JS to native.** libcbe carries Chromium V8 *injections*, and one of them is the
 `PalmSystem` object every webOS web app already uses. Load it before navigating:
 
 ```cpp
@@ -173,10 +168,26 @@ protocol into one of them. And only the first argument came through on `getResou
 pack everything into that one string. The injection also calls `initialize` and
 `identifier` on startup expecting WAM-shaped answers.
 
+Some of the injection's calls do not need overloading at all, because they map onto
+delegate slots that exist for them:
+
+| JavaScript | native |
+|---|---|
+| `PalmSystem.close()` | `WebViewDelegate::Close()` |
+| `PalmSystem.platformBack()` | `HandleBrowserControlCommand("platformBack")` |
+
+Prefer those where they fit - `web/hybrid` leaves its web view through `close()`.
+
 `PalmServiceBridge` is injected too (`new PalmServiceBridge()` yields an object with a
 `call` function), which is the standard path for page JavaScript to reach `luna://`
-services - including one your own native process registers. That is the least hacky bridge
-of the lot, but it was not tested here.
+services - including one your own native process registers. That is the right answer when
+the bridge needs a real protocol rather than a signal, but it was not tested here.
+
+**What not to use.** `document.title` also reaches native code, as `TitleChanged()`, and it
+is tempting because it needs no injection. It is not an IPC channel: the title is a UI
+property with one global slot, so it collides with any page that manages its own, carries
+no arguments, and forces edge-detection hacks to tell a fresh signal from a leftover one.
+Use it for what it is - a page title.
 
 **Capturing console output.** Page `console.log` goes nowhere by default. Add
 `--enable-logging=stderr` to the switch list and it appears on stderr, tagged with the app

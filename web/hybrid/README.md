@@ -52,22 +52,44 @@ navigation at all.
 
 ## How the page asks to leave
 
-`document.title`. The page sets it, the app sees `WebViewDelegate::TitleChanged()`, and
-that is the entire channel:
+Through libcbe's own callbacks. The app loads the `palmsystem` injection, which gives page
+JavaScript real entry points, and two of them arrive in the delegate:
+
+| JavaScript | native |
+|---|---|
+| `PalmSystem.close()` | `WebViewDelegate::Close()` |
+| `PalmSystem.platformBack()` | `HandleBrowserControlCommand("platformBack")` |
 
 ```js
-function exitToNative() { document.title = 'hybrid:exit'; }
+function exitToNative() { PalmSystem.close(); }
 ```
 
-It needs no injection, no permissions and no extra IPC, which makes it the right size for
-one signal. `web/cbe/README.md` describes the two heavier channels - the `palmsystem`
-injection with `HandleBrowserControlFunction()`, and `PalmServiceBridge` over Luna - for
-when you need arguments and return values.
+`Close()` is the delegate's own dedicated slot - a callback that exists for exactly this -
+so nothing is overloaded, nothing has to be parsed out of a shared channel, and the page
+carries no state between visits.
 
-Two details make it work reliably. The app ignores the exit title unless the web view is
-actually on screen, or a title left over from a previous visit bounces the user straight
-back out. And the page restores its title on `visibilitychange`, so there is a fresh edge
-for native code to see next time.
+Turning the injection on is two lines, and both matter:
+
+```cpp
+webview->Initialize(app_id, app_path, "trusted", "", "", 1920, 1080, false);
+webview->LoadExtension("palmsystem");   // "palmsystem", NOT "v8/palmsystem"
+```
+
+Get either wrong and there is no `PalmSystem` object at all, with no error - the page just
+finds it undefined, which is why `page.html` checks for it and says so on screen.
+
+`web/cbe/README.md` covers the rest of the bridge, including
+`HandleBrowserControlFunction()`, which is synchronous and returns a string to JavaScript,
+and `PalmServiceBridge` for reaching `luna://` services.
+
+### Not the title
+
+An earlier version of this sample signalled the exit by setting `document.title` and
+watching `TitleChanged()`. It worked, and it was wrong: the title is a UI property with one
+global slot, so the channel collides with any page that manages its own title, cannot carry
+arguments, and needs edge-detection hacks - a leftover title from the previous visit
+bounced the user straight back out, and the page had to reset it on `visibilitychange` to
+manufacture a fresh edge. None of that exists now. `TitleChanged()` is only logged.
 
 ## Loading the app's own page
 
@@ -98,8 +120,8 @@ page `console.log` shows up in the redirected stream because the app passes
 ## State
 
 Verified on a 49LK5900 (webOS 4.4.3): both views render full-screen, the switch works in
-both directions, the page's exit button reaches native code through `TitleChanged`, and
-re-entering the web view resumes the existing page without reloading. The SDL view keeps
+both directions, the page's exit button reaches native code as `WebViewDelegate::Close()`,
+and re-entering the web view resumes the existing page without reloading. The SDL view keeps
 animating after coming back.
 
 **Not verified: the remote itself.** Every transition above was driven from a test hook
