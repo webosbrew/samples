@@ -13,9 +13,10 @@ The `web/` samples are the odd ones out. They link `libcbe.so` - the TV's own Ch
 engine every web app on the box already runs inside - and put a real web view in a *native*
 app, with no WAM and no web app package. There is no SDK for that library; the headers were
 reconstructed from firmware symbol tables and from the vtables of WAM's own subclasses, and
-`web/cbe/README.md` writes down how. `web/hybrid` then runs SDL2 and a web view in one
-process and switches between them, which is the awkward case: `WebOSMain()` never returns,
-so SDL has to be pumped from Chromium's message loop rather than its own.
+`web/cbe/README.md` writes down how. `web/hybrid` then runs SDL2 with a Nuklear UI
+and a web view in one process and switches between them, which is the awkward case:
+`WebOSMain()` never returns, so SDL has to be pumped from Chromium's message loop rather
+than its own.
 
 ## What is here
 
@@ -33,7 +34,7 @@ media/
 web/
   libcbe/          reconstructed libcbe headers and the link stub, shared by both
   cbe/             the smallest thing that puts a web page on screen
-  hybrid/          SDL2 and a web view in one process, swapping which one is shown
+  hybrid/          SDL2 + Nuklear and a web view in one process, swapping which is shown
 ```
 
 The same two files play through all three stacks. Comparing the three `main.c` files is the
@@ -195,7 +196,7 @@ hard to diagnose from the TV side.
 | `media/smp/webos5` | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): exported window accepted, full load / play / feed / EOS / unload, 300 video + 470 audio units on both. Those runs predate the `Play()` ordering fix, which all SMP samples share - re-run pending |
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
-| `web/hybrid` | webOS 4.0 | **verified on hardware** - 49LK5900, webOS 4.4.3: SDL2 and the web view both render full-screen from one process, switching works both ways, and the page's exit button reaches native code as `WebViewDelegate::Close()`. The transitions were driven by a test hook, not by the remote - key delivery is untested |
+| `web/hybrid` | webOS 4.0 | **verified on hardware** - 49LK5900, webOS 4.4.3: SDL2 with a Nuklear UI and the web view both render full-screen from one process, switching works both ways, and the page's exit button reaches native code as `WebViewDelegate::Close()`. The transitions were driven by a test hook, not by the remote - key delivery is untested |
 | `web/cbe` | webOS 4.0 | **verified on hardware** - 49LK5900, webOS 4.4.3: the window registers with LSM and SAM as the foreground card, and a display capture shows the page rendered full-screen at 1920x1080. Input and lifecycle are not implemented |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 

@@ -15,6 +15,8 @@
 //   [SDL view] --OK/Enter--> [web view] --exit button or Back--> [SDL view]
 
 #include <SDL.h>
+
+#include "native_ui.h"
 #include <glib.h>
 
 #include <cstdio>
@@ -114,43 +116,7 @@ HybridWebView* g_webview;
 // ---------------------------------------------------------------- SDL view
 
 SDL_Window* g_sdl_window;
-SDL_Renderer* g_sdl_renderer;
 bool g_native_visible;
-int g_frame;
-
-// Where "open the web view" lives on screen. The remote's pointer gives SDL
-// ordinary mouse events, so the same rectangle serves a click and a wheel press.
-const SDL_Rect kOpenButton = {660, 470, 600, 140};
-
-void DrawNativeView() {
-  // Something obviously native and obviously alive, so it is clear at a glance
-  // which of the two views is on screen.
-  const double phase = g_frame / 60.0;
-  const Uint8 pulse = static_cast<Uint8>(40 + 30 * (1 + SDL_sin(phase)));
-  SDL_SetRenderDrawColor(g_sdl_renderer, pulse, pulse / 2, 120, 255);
-  SDL_RenderClear(g_sdl_renderer);
-
-  // A moving bar, so a still frame still shows the loop is running.
-  SDL_SetRenderDrawColor(g_sdl_renderer, 255, 255, 255, 90);
-  const int bar = 40 + (g_frame % 120) * 8;
-  SDL_Rect moving = {200, 240, bar, 40};
-  SDL_RenderFillRect(g_sdl_renderer, &moving);
-
-  // The button. Highlighted while the pointer is over it, so it is obvious the
-  // app is seeing the remote at all.
-  int mx = 0, my = 0;
-  SDL_GetMouseState(&mx, &my);
-  const SDL_Point p = {mx, my};
-  const bool hot = SDL_PointInRect(&p, &kOpenButton) == SDL_TRUE;
-  SDL_SetRenderDrawColor(g_sdl_renderer, hot ? 0x42 : 0x20, hot ? 0x85 : 0x40,
-                         hot ? 0xf4 : 0x90, 255);
-  SDL_RenderFillRect(g_sdl_renderer, &kOpenButton);
-  SDL_SetRenderDrawColor(g_sdl_renderer, 255, 255, 255, 255);
-  SDL_RenderDrawRect(g_sdl_renderer, &kOpenButton);
-
-  SDL_RenderPresent(g_sdl_renderer);
-  ++g_frame;
-}
 
 // --------------------------------------------------------------- switching
 
@@ -252,13 +218,7 @@ gboolean Pump(gpointer) {
   while (SDL_PollEvent(&e)) {
     if (e.type == SDL_QUIT) return G_SOURCE_REMOVE;
 
-    if (e.type == SDL_MOUSEBUTTONDOWN) {
-      printf("[sdl] click at %d,%d\n", e.button.x, e.button.y);
-      // Anywhere is fine: the rectangle is an affordance, not a hit test, and a
-      // TV pointer is imprecise enough that demanding accuracy is unkind.
-      if (g_native_visible) ShowWebView();
-      continue;
-    }
+    native_ui_handle_event(&e);
     if (e.type != SDL_KEYDOWN) continue;
     printf("[sdl] key %d\n", static_cast<int>(e.key.keysym.sym));
     switch (e.key.keysym.sym) {
@@ -276,7 +236,11 @@ gboolean Pump(gpointer) {
         break;
     }
   }
-  if (g_native_visible && g_sdl_renderer != NULL) DrawNativeView();
+  // Nuklear is immediate mode: the UI is rebuilt every frame, and the button
+  // reports itself by return value rather than through a callback.
+  if (g_native_visible && g_sdl_window != NULL && native_ui_frame(g_sdl_window)) {
+    ShowWebView();
+  }
   return G_SOURCE_CONTINUE;
 }
 
@@ -302,23 +266,19 @@ gboolean StartApp(gpointer) {
   printf("[sdl] video driver: %s\n", SDL_GetCurrentVideoDriver());
 
   g_sdl_window = SDL_CreateWindow("hybrid", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                                  1920, 1080, SDL_WINDOW_FULLSCREEN);
+                                  1920, 1080, SDL_WINDOW_FULLSCREEN | SDL_WINDOW_OPENGL);
   if (g_sdl_window == NULL) {
     printf("[sdl] SDL_CreateWindow failed: %s\n", SDL_GetError());
     return G_SOURCE_REMOVE;
   }
-  g_sdl_renderer = SDL_CreateRenderer(g_sdl_window, -1, SDL_RENDERER_ACCELERATED);
-  if (g_sdl_renderer == NULL) {
-    printf("[sdl] SDL_CreateRenderer failed: %s\n", SDL_GetError());
-    return G_SOURCE_REMOVE;
-  }
+  if (!native_ui_init(g_sdl_window)) return G_SOURCE_REMOVE;
   // The remote's pointer is a mouse as far as SDL is concerned, but the cursor
   // has to be asked for. Weakly linked: webOS 3 and older have the hints but not
   // this call, and a hard reference would stop the app loading there.
   if (SDL_webOSCursorVisibility != NULL) SDL_webOSCursorVisibility(SDL_TRUE);
 
   g_native_visible = true;
-  puts("[sdl] native view up - click, or press OK/Enter, to open the web view");
+  puts("[sdl] native view up - click the button, or press OK/Enter");
 
   g_timeout_add(16, Pump, NULL);
   return G_SOURCE_REMOVE;

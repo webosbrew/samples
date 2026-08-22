@@ -29,8 +29,47 @@ gboolean Pump(gpointer) {
 ```
 
 SDL initialises fine from there - `SDL_InitSubSystem(SDL_INIT_VIDEO)` on the browser UI
-thread reports the `wayland` driver and gives back a window and an accelerated renderer,
-with libcbe already running in the same process.
+thread reports the `wayland` driver and gives back a window, with libcbe already running in
+the same process. So does a second GL context: `Mali-470 MP, OpenGL ES 2.0`, alongside the
+EGL that Chromium is already using.
+
+## The native view
+
+Drawn with [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear) on GLES2, behind the
+four functions in `native_ui.h`. It is in its own file, and in C rather than C++, for two
+reasons: Nuklear compiles its implementation into exactly one translation unit and is not
+happy as C++, and `main.cpp` is about one process owning two window systems - burying that
+under an immediate-mode toolkit would hide the part worth reading.
+
+The toolkit earns its place by drawing text at all. SDL2 alone cannot, so the alternative
+was coloured rectangles and a shipped font; Nuklear bakes its own atlas, rebaked here at
+30px because the built-in 13px is unreadable across a living room.
+
+### GLES2 is not a preference
+
+Nuklear's `sdl_renderer` backend - and Dear ImGui's `imgui_impl_sdlrenderer2` - are built on
+`SDL_RenderGeometry`, which arrived in **SDL 2.0.18**. The TV ships **2.0.4**:
+
+```
+SDL_RenderGeometry:     MISSING
+SDL_RenderGeometryRaw:  MISSING
+SDL_GetTicks64:         MISSING
+```
+
+The buildroot NDK ships 2.30.12, so a `sdl_renderer` build compiles perfectly and fails on
+the device. `demo/sdl_opengles2/nuklear_sdl_gles2.h` avoids all of it by using its own GL
+context.
+
+That backend still calls `SDL_GetTicks64` twice, which `-verify` caught and the compiler
+could not:
+
+```
+* Symbol SDL_GetTicks64 is undefined (bound lazily)
+```
+
+`native_ui.c` substitutes a function-like macro over the two call sites before including
+the header - no patching a fetched dependency, and no competing `SDL_GetTicks64` in this
+binary that would shadow the real one on firmware that has it.
 
 ## Switching
 
