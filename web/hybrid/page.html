@@ -1,77 +1,70 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>hybrid web view</title>
+<title>sign in</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0d1b2a; color: #e8eef5;
-               font: 30px/1.5 system-ui, sans-serif; }
+               font: 28px/1.5 system-ui, sans-serif; }
   main { height: 100%; display: flex; flex-direction: column;
-         align-items: center; justify-content: center; gap: 22px; }
-  h1 { font-size: 58px; margin: 0; font-weight: 600; }
-  p { margin: 0; opacity: .75; }
-  .value { font-size: 40px; opacity: 1; }
-  .value b { color: #7fb0ff; }
-  button { font: inherit; font-size: 32px; padding: 16px 44px; border: 0;
-           border-radius: 12px; background: #4285f4; color: #fff; cursor: pointer; }
+         align-items: center; justify-content: center; gap: 18px; }
+  h1 { font-size: 52px; margin: 0 0 8px; font-weight: 600; }
+  /* Flex rows rather than a grid: the TV's Chromium is 68, and its grid put all
+     four fields on one line. */
+  form { display: flex; flex-direction: column; gap: 18px; }
+  .field { display: flex; align-items: center; gap: 20px; }
+  label { opacity: .8; width: 200px; text-align: right; }
+  input { font: inherit; width: 420px; padding: 14px 18px; border-radius: 10px;
+          border: 2px solid #24405f; background: #12233a; color: #e8eef5; }
+  input:focus { outline: none; border-color: #4285f4; }
+  .row { display: flex; gap: 16px; justify-content: center; margin-top: 12px; }
+  button { font: inherit; padding: 16px 44px; border: 0; border-radius: 12px;
+           background: #4285f4; color: #fff; cursor: pointer; }
   button.ghost { background: #23364d; }
-  button:focus { outline: 6px solid #ffffff88; }
-  #reply { color: #9be6a4; min-height: 1.5em; }
-  #warn { color: #ffb4a2; }
+  button:focus { outline: 5px solid #ffffff88; }
+  p.note { opacity: .55; font-size: 22px; margin: 10px 0 0; }
 </style>
 <main>
-  <h1>web view</h1>
-  <p class="value">native says the counter is <b id="counter">(not yet)</b></p>
-
-  <button id="send">Send a note back to native</button>
-  <p id="reply"></p>
-
-  <button id="exit" class="ghost" autofocus>Back to native</button>
-  <p id="hint">or press Back on the remote</p>
+  <h1>Example Provider</h1>
+  <form id="login">
+    <div class="field">
+      <label for="user">Username</label>
+      <input id="user" name="user" value="demo" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="pass">Password</label>
+      <input id="pass" name="pass" type="password" value="hunter2"
+             autocomplete="current-password">
+    </div>
+    <div class="row">
+      <button id="submit" type="submit">Log in</button>
+      <button id="cancel" type="button" class="ghost">Cancel</button>
+    </div>
+  </form>
+  <p class="note" id="target"></p>
 </main>
 <script>
-  // ---- native -> page -------------------------------------------------------
-  // The app calls RunJavaScript("window.fromNative(N)"). There is no typed
-  // bridge in that direction and no return value, so the contract is simply a
-  // function the page agrees to define.
-  var notes = 0;
-  window.fromNative = function (counter) {
-    document.getElementById('counter').textContent = counter;
-  };
+  // The app opened this page with ?state=...&redirect_uri=..., exactly the way
+  // an OAuth client hands parameters to a provider. Nothing else crosses in.
+  var params = new URLSearchParams(location.search);
+  var redirectUri = params.get('redirect_uri') || '';
+  var state = params.get('state') || '';
+  document.getElementById('target').textContent = 'redirect_uri: ' + redirectUri;
 
-  // ---- page -> native -------------------------------------------------------
-  // PalmSystem.getResource reaches the app's HandleBrowserControlFunction, and
-  // whatever the app writes to its result parameter comes back here as the
-  // return value - synchronously. Only the first argument survives, so the
-  // protocol lives inside that one string.
-  function callNative(payload) {
-    if (typeof PalmSystem === 'undefined') return null;
-    return PalmSystem.getResource(payload, '');
+  // And the only thing that crosses back out is this navigation. The app sees
+  // the URL in WebViewDelegate::DidStartNavigation before the request is made,
+  // so the target never has to exist - which is why a real provider can send
+  // you to a URL that serves nothing at all.
+  function finish(extra) {
+    location.href = redirectUri + '?state=' + encodeURIComponent(state) + extra;
   }
 
-  document.getElementById('send').addEventListener('click', function () {
-    notes++;
-    var reply = callNative('note::note ' + notes + ' from the page');
-    document.getElementById('reply').textContent =
-        reply ? 'native replied: "' + reply + '"' : 'no reply - is PalmSystem loaded?';
+  document.getElementById('login').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var user = document.getElementById('user').value.trim();
+    if (!user) return;
+    finish('&user=' + encodeURIComponent(user));
   });
 
-  // ---- leaving --------------------------------------------------------------
-  // platformBack is a notification and nothing else, so the page survives to be
-  // shown again. close() really closes: it arrives from
-  // RenderViewHostImpl::OnClose() with the render view already going away.
-  function exitToNative() {
-    if (typeof PalmSystem === 'undefined') {
-      document.getElementById('hint').id = 'warn';
-      document.getElementById('warn').textContent =
-          'PalmSystem missing - the app did not load the injection';
-      return;
-    }
-    PalmSystem.platformBack();
-  }
-
-  document.getElementById('exit').addEventListener('click', exitToNative);
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Backspace' || e.key === 'Escape') exitToNative();
+  document.getElementById('cancel').addEventListener('click', function () {
+    finish('');  // no user: the app reads that as cancelled
   });
-
-  console.log('hybrid page ready');
 </script>

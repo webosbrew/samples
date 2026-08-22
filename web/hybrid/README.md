@@ -1,12 +1,21 @@
 # SDL2 and a web view in one process
 
-Native code draws one screen, Chromium draws another, and pressing a button swaps them:
+A native app that needs the user to sign in on somebody else's web page, and needs whatever
+that page hands back. Native code draws one screen, Chromium draws the provider's, and the
+result comes home in the redirect URL:
 
 ```
-  [SDL view] --OK/Enter--> [web view] --exit button or Back--> [SDL view]
+  [native: "Sign in"]  ->  [web: provider's login form]  ->  [native: "signed in as demo"]
+                                        |
+                            navigates to redirect_uri?user=...
+                            which the app intercepts and the browser never loads
 ```
 
-One process, two Wayland surfaces, no second app and no IPC.
+One process, two Wayland surfaces, no second app and no browser to ship.
+
+This is the shape [chiaki-ng](https://github.com/streetpea/chiaki-ng) needs for PSN login,
+and shipping a whole browser for it is absurd. The provider here is a local `page.html`
+rather than Sony, so the sample is self-contained, but the mechanism is identical.
 
 ## The problem this solves
 
@@ -103,45 +112,74 @@ normally, reporting `load finished`, and never appearing.
 There is no matching `DetachWebContents()` on the way out. Calling it there segfaults on a
 null pointer: by then the contents it would detach are already gone.
 
-## Passing data across
+## Getting the answer out: intercept the navigation
 
-The sample carries a value each way, so both channels are visible at once: the native
-panel owns a counter and hands it to the page on the way in, and the page sends a note
-back that the panel then shows.
-
-**Native to page** is `RunJavaScript()`, and that is the whole mechanism. There is no typed
-bridge and no return value, so the data goes in as a literal in a call to a function the
-page agreed to define:
+The important channel is not JavaScript at all. Every navigation the web view starts arrives
+in the delegate first, with the full URL and its query string:
 
 ```cpp
-snprintf(js, sizeof(js), "window.fromNative && window.fromNative(%d)", counter);
-webview->RunJavaScript(js);
+void DidStartNavigation(const std::string& url, bool is_main_frame) override {
+  if (!is_main_frame) return;
+  if (url.compare(0, sizeof(kRedirectPrefix) - 1, kRedirectPrefix) != 0) return;
+  OnRedirect(url);          // pull "user" and "state" straight out of the URL
+}
 ```
 
-Timing is the only subtlety. On the first visit the page has not run yet, so the handover
-waits for `LoadFinished()`; on later visits it is already loaded and suspended, so the value
-goes over immediately. Both are deferred out of the delegate callback.
+**It fires before the request is made**, which is the property the whole flow rests on: the
+redirect target never has to exist. This sample points it at `webosbrew.invalid`, and the
+log shows the interception landing first and the failure arriving after:
 
-**Page to native** goes through the injection, and is the only channel here that carries a
-value in *both* directions:
+```
+[web] navigate https://webosbrew.invalid/callback?state=s1-9431&user=demo
+[auth] redirect: user='demo' state='s1-9431'
+```
+
+`StopLoading()` in the handler keeps the dead host from costing a DNS lookup and an error
+page. A real provider's `redirect_uri` behaves the same way - chiaki sends PSN to
+`https://remoteplay.dl.playstation.net/remoteplay/redirect`, which serves nothing useful,
+and reads `?code=` off it exactly like this.
+
+Data goes the *other* way in the URL too, the way any OAuth client does it - no JavaScript
+involved:
+
+```cpp
+"file://" + app_path + "/page.html?state=" + nonce + "&redirect_uri=" + kRedirectPrefix
+```
+
+The page reads those with `URLSearchParams` and sends the nonce back; the app throws the
+result away if it does not match. That check is not decoration - it is what stops an
+unrelated navigation being mistaken for your redirect.
+
+The form needs somewhere to type from a remote, so the window sets
+`SetUseVirtualKeyboard(true)`.
+
+What this sample skips and a real client must not: proper percent-decoding of the query
+(the parser here is about ten lines), a nonce that is actually unguessable, and probably
+`SetUserAgent()` - some providers refuse to serve a login page to an unrecognised browser.
+Cookies persist in the `WebViewProfile`, so a second sign-in may not need the form at all.
+
+## The other channel: JavaScript to native
+
+The login flow does not need it, but it is the only channel that carries a value in *both*
+directions, so it is worth knowing:
 
 ```js
-var reply = PalmSystem.getResource('note::hello', '');   // -> "native got it"
+var reply = PalmSystem.getResource('note::hello', '');   // -> whatever native writes
 ```
 ```cpp
 void HandleBrowserControlFunction(const std::string& command,
                                   const std::vector<std::string>& args,
                                   std::string* result) override {
-  // args[0] == "note::hello"
-  if (result) *result = "native got it";   // becomes the JS return value
+  // args[0] == "note::hello";  *result becomes the JS return value, synchronously
 }
 ```
 
-It is synchronous: whatever the app writes to `result` is what the JavaScript call returns.
-Two constraints shape how you use it. The command names belong to the injection rather than
-to you - the page arrives here by calling `getResource` - so a real protocol lives inside
-the argument, which is why the sample prefixes its payload with `note::`. And **only the
-first argument survives the trip**, so everything has to be packed into that one string.
+Two constraints. The command names belong to the injection rather than to you - the page
+arrives by calling `getResource` - so a real protocol lives inside the argument. And only
+the **first** argument survives the trip.
+
+Going the other way, `RunJavaScript()` returns nothing, so native can push but never ask.
+A native-initiated request needs two hops and a request id.
 
 ### This is what webOSTV.js is built on
 
@@ -234,9 +272,10 @@ page `console.log` shows up in the redirected stream because the app passes
 
 ## State
 
-Verified on a 49LK5900 (webOS 4.4.3): both views render full-screen, the switch works in
-both directions, the page's exit button reaches native code as `WebViewDelegate::Close()`,
-and re-entering the web view resumes the existing page without reloading. The SDL view keeps
+Verified on a 49LK5900 (webOS 4.4.3): the whole sign-in flow runs end to end - native panel,
+provider form, and back to the panel reading `signed in as demo`, with the nonce checked and
+the redirect never loaded. Both views render full-screen, and the switch works in both
+directions. The SDL view keeps
 animating after coming back.
 
 Anything that changes the window or the web view must also be **deferred out of a delegate

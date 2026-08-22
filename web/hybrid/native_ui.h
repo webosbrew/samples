@@ -23,11 +23,13 @@ void native_ui_handle_event(const SDL_Event *event);
 // Draws one frame. Returns true if the user asked to open the web view.
 bool native_ui_frame(SDL_Window *window);
 
-// The value this side owns, and hands to the page on the way in.
-int native_ui_counter(void);
+// The nonce this sign-in attempt was started with. A fresh one each time, and
+// the redirect has to carry it back or the result is thrown away.
+const char *native_ui_new_state(void);
+const char *native_ui_state(void);
 
-// Whatever the page last sent back, shown in the panel.
-void native_ui_set_web_message(const char *text);
+// What came back from the login flow: the captured code, or an error.
+void native_ui_set_result(const char *text);
 
 void native_ui_shutdown(void);
 
