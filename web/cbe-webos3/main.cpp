@@ -142,6 +142,7 @@ int main(int argc, char** argv) {
     args.push_back(std::string("--browser-subprocess-path=") + argv[0]);
     args.push_back(std::string("--user-data-dir=/tmp/") + kAppId);
     // Borrowed from WAM's own WAM_SWITCHES on this generation, pending bisection.
+    args.push_back(std::string("--app-id=") + kAppId);
     args.push_back("--webos-wam");
     args.push_back("--noerrdialogs");
     args.push_back("--disable-extensions");

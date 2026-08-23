@@ -7,5 +7,6 @@
   "title": "@IPK_TITLE@",
   "icon": "icon.png",
   "iconColor": "@IPK_COLOR@",
+  "noSplashOnLaunch": true,
   "bgColor": "@IPK_COLOR@"
 }

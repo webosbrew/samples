@@ -65,13 +65,35 @@ the recovered signatures -
 so the reconstructed ABI is right: the vtable slots line up, the old-ABI strings arrive
 intact, and the web view is rendering.
 
-**What does not work is compositing.** LSM keeps the previous app foreground and the screen
-shows the launch splash. `SetWindowProperty("appId", ...)`, `SetWindowHostState`,
-`SetHiddenState(false)` and `SetOpacity(1.0f)` after `Show()` were all tried and none of them
-hands the surface over. webOS 3 has no `Activate()`, which is what does it on webOS 4, and
-the equivalent has not been found. Dropping `Resize()` - which WAM never calls on this
-generation - makes it worse, not better: the delegate stops firing entirely and Wayland
-starts reporting `proxy already has listener`.
+**What does not work is compositing.** LSM keeps the previous app foreground, and with the
+splash disabled the screen shows the TV's own no-signal wallpaper - so the surface is not
+merely behind something, it is not there.
 
-So this is honest work-in-progress rather than a finished sample. The hard half - the ABI -
-is done and demonstrated. The window handover is not.
+The search so far, all of it negative, and worth writing down so it is not repeated:
+
+| tried | result |
+|---|---|
+| `SetWindowProperty("appId", ...)` | no effect - and it is the only property WAM sets besides the key-access ones |
+| `SetWindowHostState(FULLSCREEN)`, before and after `Show()` | no effect |
+| `SetHiddenState(false)`, `SetOpacity(1.0f)` after `Show()` | no effect |
+| `--app-id=<appid>` (the switch exists in libcbe) | no effect |
+| `webos::Platform::Get()` then `SetFullscreen(true)` | returns **nil** - that singleton is not constructed in a plain embedder |
+| dropping `Resize()`, which WAM never calls here | **worse**: the delegate stops firing and Wayland reports `proxy already has listener` |
+
+Two things were learned rather than guessed. `noSplashOnLaunch` in `appinfo.json` matters:
+without it SAM's launch splash covers the screen indefinitely and hides what is really
+happening, which is what made this look like a compositing bug with a picture on top of it.
+And `WebAppWaylandWindow::show()` in webOS 3's WAM turns out to be nothing but
+`onStageActivated()` - pure WAM bookkeeping, no libcbe calls - followed by
+`WebAppWindowBase::Show()`, so WAM is not doing anything special that the sample omits.
+
+The live lead is registration. libcbe contains
+`palm://com.webos.applicationManager/registerNativeApp` and a `webos::LunaServices` class
+whose `Initialize(const base::FilePath&)` is an instance method needing a
+`webos::LunaServices(webos::Platform*)` - and `Platform` is the browser application's layer,
+built by `ChromeMain` rather than by `WebOSMain`. So on this generation the Luna
+registration that a native app needs may simply live on the browser's side of the library
+and not the embedder's. That is a hypothesis, not a finding.
+
+So this is honest work-in-progress. The hard half - the ABI - is done and demonstrated. The
+window handover is not, and the next person should start at `LunaServices`.

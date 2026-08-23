@@ -26,6 +26,7 @@ namespace webos {
 
 class WebViewProfile;
 
+
 // 24 slots. Names for 0-14 and 18-19 come from BlinkWebView's vtable; the rest
 // are stubs it fills with empty bodies, and must be present or libcbe indexes
 // past the end of ours.
