@@ -32,6 +32,7 @@ ICONS = {
     "ndl-directmedia-v2": ("NDL", "DM2"),
     "lgnc":               ("LGNC", "1-4"),
     "web-cbe":            ("CBE", "w4", "globe"),
+    "web-cbe-webos3":     ("CBE", "w3", "globe"),
     "web-hybrid":         ("SDL+", "w4", "globe"),
 }
 
