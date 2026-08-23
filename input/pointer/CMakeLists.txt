@@ -12,7 +12,8 @@ pkg_check_modules(GLES2 REQUIRED glesv2)
 add_executable(input-pointer main.c)
 target_include_directories(input-pointer SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS} ${GLES2_INCLUDE_DIRS})
 target_link_directories(input-pointer PRIVATE ${SDL2_LIBRARY_DIRS} ${GLES2_LIBRARY_DIRS})
-target_link_libraries(input-pointer PRIVATE ${SDL2_LIBRARIES} ${GLES2_LIBRARIES})
+# dl for the webOS-only SDL entry points, looked up by name at runtime.
+target_link_libraries(input-pointer PRIVATE ${SDL2_LIBRARIES} ${GLES2_LIBRARIES} ${CMAKE_DL_LIBS})
 
 set_target_properties(input-pointer PROPERTIES
         SKIP_BUILD_RPATH TRUE

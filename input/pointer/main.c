@@ -18,6 +18,7 @@
  */
 #include <SDL.h>
 #include <SDL_opengles2.h>
+#include <dlfcn.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,6 +75,22 @@ int main(int argc, char *argv[]) {
     g_log = fopen("/tmp/input-pointer.log", "w");
     setvbuf(stdout, NULL, _IOLBF, 0);
 
+    /* Ask for the keys a surface does not get by default.
+     *
+     * wl_webos_shell_surface's key mask defaults to 0xFFFFFFF8, which clears
+     * bits 1, 2 and 4 - home, back and exit. That, not some opaque platform
+     * filter, is why injecting 158 (KEY_BACK) or 174 (KEY_EXIT) reaches no
+     * window. SDL-webOS turns these hints into
+     * wl_webos_shell_surface.set_property("_WEBOS_ACCESS_POLICY_KEYS_*"),
+     * which has to happen before the surface exists - hence before
+     * SDL_CreateWindow, and named by string so this builds against an NDK SDL
+     * that has never heard of them. */
+    SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_BACK", "1");
+    SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_EXIT", "1");
+    SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_HOME", "1");
+    SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_GUIDE", "1");
+    SDL_SetHint("SDL_WEBOS_ACCESS_POLICY_KEYS_META", "1");
+
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("[pointer] SDL_Init failed: %s\n", SDL_GetError());
         return 1;
@@ -95,6 +112,25 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     printf("[pointer] GL %s on %s\n", glGetString(GL_VERSION), glGetString(GL_RENDERER));
+
+    /* The TV's SDL (2.0.4-webOS) carries a few extras the NDK's 2.30 does not
+     * declare. Resolved by name so this still builds and runs against either:
+     * a desktop SDL simply reports nothing here. */
+    {
+        /* RTLD_DEFAULT would need _GNU_SOURCE before every header; a handle
+         * on the process itself searches the same scope without that. */
+        void *self = dlopen(NULL, RTLD_LAZY);
+        int (*panel_res)(int *, int *) = self ? dlsym(self, "SDL_webOSGetPanelResolution") : NULL;
+        int (*refresh)(void) = self ? dlsym(self, "SDL_webOSGetRefreshRate") : NULL;
+        if (panel_res) {
+            int pw = 0, ph = 0;
+            panel_res(&pw, &ph);
+            logf_("panel %dx%d", pw, ph);
+        } else {
+            logf_("panel unknown (SDL_webOSGetPanelResolution absent)");
+        }
+        if (refresh) logf_("refresh %d", refresh());
+    }
 
     int dw = REQ_W, dh = REQ_H;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
