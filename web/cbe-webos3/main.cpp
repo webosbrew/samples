@@ -157,6 +157,7 @@ int main(int argc, char** argv) {
     args.push_back("--no-sandbox");
     args.push_back("--no-zygote");
     args.push_back("--in-process-gpu");
+
     args.push_back(std::string("--browser-subprocess-path=") + argv[0]);
     args.push_back(std::string("--user-data-dir=/tmp/") + kAppId);
     // Borrowed from WAM's own WAM_SWITCHES on this generation, pending bisection.
@@ -172,6 +173,7 @@ int main(int argc, char** argv) {
   for (size_t i = 0; i < args.size(); ++i) cargv.push_back(args[i].c_str());
 
   if (!getenv("XDG_RUNTIME_DIR")) setenv("XDG_RUNTIME_DIR", "/tmp/xdg", 1);
+
   // webOS 3's WebOSMain does std::string(getenv("CDM_LIB_PATH")) with no null
   // check and appends "/libwidevinecdmadapter.so" to it, so an unset variable
   // aborts the process before anything of ours runs -

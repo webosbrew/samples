@@ -207,5 +207,8 @@ called successfully and changed nothing, so the remaining candidate on that path
 reconstructed. `base::FilePath` is declarable, for what it is worth: libcbe exports its
 `std::string` constructor and destructor, and its layout is that one member.
 
-So this is honest work-in-progress. The hard half - the ABI - is done and demonstrated. The
-window handover is not, and the next person should start at `LunaServices` and `ChromeMain`.
+So this is honest work-in-progress. The hard half - the ABI - is done and demonstrated, and
+the failure is now located precisely: no frame is ever committed to the window's Wayland
+surface. The next person should start there - comparing this log against the same capture
+from `web/cbe` on a webOS 4 set, where the identical code does present - rather than at the
+windowing API, which the protocol trace shows is being driven correctly.
