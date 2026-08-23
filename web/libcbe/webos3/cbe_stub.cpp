@@ -9,7 +9,16 @@
 
 extern "C" int WebOSMain(int, const char**) STUB(0)
 
+namespace base {
+FilePath::FilePath(const std::string& p) : path_(p) STUB()
+FilePath::~FilePath() STUB()
+}  // namespace base
+
 namespace webos {
+
+Runtime* Runtime::Get() STUB(0)
+void Runtime::InitializePlatform(const base::FilePath&) STUB()
+void Runtime::SetWindowSize(int, int) STUB()
 
 WebViewBase::WebViewBase(int, int) : webview_(0) STUB()
 WebViewBase::~WebViewBase() STUB()

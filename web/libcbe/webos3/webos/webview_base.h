@@ -26,6 +26,35 @@ namespace webos {
 
 class WebViewProfile;
 
+}  // namespace webos
+
+// Chromium's own path type, exported by libcbe. Layout is a single std::string,
+// which is what makes it safe to declare here.
+namespace base {
+class FilePath {
+ public:
+  explicit FilePath(const std::string& path);
+  ~FilePath();
+
+ private:
+  std::string path_;
+};
+}  // namespace base
+
+namespace webos {
+
+// A singleton libcbe keeps for platform-wide state. Unlike webos::Platform,
+// which belongs to the browser application, this one may exist in a plain
+// embedder - and the window size lives here too.
+class Runtime {
+ public:
+  static Runtime* Get();
+  void SetWindowSize(int width, int height);
+  // Suspected to be what builds webos::Platform - the layer that owns the Luna
+  // side, and which is null in a plain embedder.
+  void InitializePlatform(const base::FilePath& path);
+};
+
 
 // 24 slots. Names for 0-14 and 18-19 come from BlinkWebView's vtable; the rest
 // are stubs it fills with empty bodies, and must be present or libcbe indexes

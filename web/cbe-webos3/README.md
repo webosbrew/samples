@@ -116,6 +116,19 @@ which also exists in the library, changes nothing either way.
 The app does reach the Luna bus: `ls-monitor -l` shows two client-only connections owned by
 the executable, without a service name. So libcbe's own LS2 client is running.
 
+### Only one binary on the whole TV links libcbe
+
+Scanning `/usr/bin` and every installed app on webOS 3 turns up exactly one consumer:
+`/usr/bin/WebAppMgr`. The web browser there is a *web app* that WAM hosts, not a native
+binary of its own - unlike webOS 4, where `com.webos.app.browser/chrome` links libcbe
+directly. So on this generation there is no standalone embedder anywhere in the firmware to
+copy, which is why none of this can be checked against a working example.
+
+webOS 3's `WebAppMgr` binary is also no help: its undefined symbols are the same short list
+as webOS 4's - `WebOSMain`, `WebAppManagerServiceLuna::instance()`,
+`WebAppManager::instance()`, `setPlatformModules` - so at process level it does what this
+sample does.
+
 ### The live lead is registration. libcbe contains
 `palm://com.webos.applicationManager/registerNativeApp` and a `webos::LunaServices` class
 whose `Initialize(const base::FilePath&)` is an instance method needing a
@@ -133,9 +146,19 @@ therefore be no supported standalone-embedder path on this generation, and `WebO
 may be expected to yield a rendering web view whose *window* somebody else owns. webOS 4,
 where the same sample works unchanged, would then be the generation that fixed it.
 
-That is a hypothesis with three pieces of evidence behind it - `Platform::Get()` returning
-nil, `ChromeMain` existing beside `WebOSMain`, and `--webos-wam` being mandatory - and it
-should be tested rather than believed.
+That is a hypothesis with four pieces of evidence behind it - `Platform::Get()` returning
+nil, `ChromeMain` existing beside `WebOSMain`, `--webos-wam` being mandatory, and WAM being
+the only binary on the TV that links the library at all - and it should be tested rather
+than believed.
+
+`webos::Runtime` is worth knowing about either way. Unlike `Platform`, **its singleton is
+alive in a plain embedder** - `Runtime::Get()` returns a real pointer - and it carries
+`SetWindowSize()`, `InitializePlatform(const base::FilePath&)` and
+`Initialize(webos::PlatformDelegate*)`. `SetWindowSize` and `InitializePlatform` were both
+called successfully and changed nothing, so the remaining candidate on that path is
+`Initialize(PlatformDelegate*)`, which needs a delegate whose interface has not been
+reconstructed. `base::FilePath` is declarable, for what it is worth: libcbe exports its
+`std::string` constructor and destructor, and its layout is that one member.
 
 So this is honest work-in-progress. The hard half - the ABI - is done and demonstrated. The
 window handover is not, and the next person should start at `LunaServices` and `ChromeMain`.

@@ -77,18 +77,13 @@ SampleWebView* g_webview;
 std::string g_app_path;
 
 gboolean CreateWebApp(gpointer) {
+
   g_window = new SampleWindow();
   // No InitWindow on webOS 3. WAM never calls Resize either, but dropping it
   // here stops the delegate firing at all and the Wayland connection starts
   // complaining "proxy already has listener", so it is doing something the
   // constructor alone does not.
-  printf("[diag] before Resize: display=%dx%d native=%p handle=%p state=%d\n",
-         g_window->DisplayWidth(), g_window->DisplayHeight(),
-         g_window->GetNativeWindow(), (void*)0, (int)g_window->GetWindowHostState());
   g_window->Resize(1920, 1080);
-  printf("[diag] after Resize:  display=%dx%d native=%p state=%d\n",
-         g_window->DisplayWidth(), g_window->DisplayHeight(),
-         g_window->GetNativeWindow(), (int)g_window->GetWindowHostState());
   g_window->SetWindowProperty("appId", kAppId);
   g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
 
@@ -103,7 +98,10 @@ gboolean CreateWebApp(gpointer) {
 
   g_window->AttachWebContents(g_webview->GetWebContents());
   g_window->Show();
-  printf("[diag] after Show:    native=%p state=%d\n",
+  // Reads back 0 - NATIVE_WINDOW_DEFAULT - however the state is set. The
+  // compositor never acknowledges it, which is the whole problem.
+  printf("[cbe] window %dx%d native=%p host-state=%d\n",
+         g_window->DisplayWidth(), g_window->DisplayHeight(),
          g_window->GetNativeWindow(), (int)g_window->GetWindowHostState());
   // webOS 3 has no Activate(). SetHiddenState(false) and re-asserting the appId
   // after Show() are the nearest equivalents worth trying.
