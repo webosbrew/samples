@@ -121,7 +121,6 @@ int main(int argc, char *argv[]) {
          * on the process itself searches the same scope without that. */
         void *self = dlopen(NULL, RTLD_LAZY);
         int (*panel_res)(int *, int *) = self ? dlsym(self, "SDL_webOSGetPanelResolution") : NULL;
-        int (*refresh)(void) = self ? dlsym(self, "SDL_webOSGetRefreshRate") : NULL;
         if (panel_res) {
             int pw = 0, ph = 0;
             panel_res(&pw, &ph);
@@ -129,7 +128,10 @@ int main(int argc, char *argv[]) {
         } else {
             logf_("panel unknown (SDL_webOSGetPanelResolution absent)");
         }
-        if (refresh) logf_("refresh %d", refresh());
+        /* SDL_webOSGetRefreshRate is deliberately not called: its signature is
+         * not published, and calling it as int(void) crashed the app right
+         * after the panel line - which looked like a successful start until
+         * the log was read past the first entry. */
     }
 
     int dw = REQ_W, dh = REQ_H;
