@@ -36,6 +36,7 @@ media/
 web/
   libcbe/          reconstructed libcbe headers and the link stub, shared by both
   cbe/             the smallest thing that puts a web page on screen
+  cbe-webos3/      the same, against webOS 3's older and different libcbe
   hybrid/          a native sign-in flow: SDL2 + Nuklear, a web login page, one process
 ```
 
@@ -199,6 +200,7 @@ hard to diagnose from the TV side.
 | `media/ndl/directmedia` (v2) | 5+ | **verified on hardware** - 65UP7560 (webOS 6.5.2) and OLED77C5 (webOS 10.3.1): 300 video + 469 PCM chunks on both |
 | `media/ndl/directmedia` (v1) | 3.5 - 4.x | built and symbol-verified, needs a 2017-2019 set to test |
 | `web/hybrid` | webOS 4.0 | **verified on hardware** - 49LK5900, webOS 4.4.3: the sign-in flow runs end to end - native panel, web login form, and back with the username read out of the intercepted redirect URL. The OK key is verified too, injected with `com.webos.service.networkinput/test/sendKeyCode`; leaving the web view by remote is not, since keys go to whichever window is up |
+| `web/cbe-webos3` | webOS 3 | **partly working** - 43UH6100, starfish 3.4.0: the reconstructed webOS 3 ABI is right and the page loads and paints, with every delegate callback firing, but the window never reaches the screen - LSM keeps the previous app foreground. webOS 3 has no `Activate()` and the equivalent has not been found |
 | `web/cbe` | webOS 4.0 | **verified on hardware** - 49LK5900, webOS 4.4.3: the window registers with LSM and SAM as the foreground card, and a display capture shows the page rendered full-screen at 1920x1080. Input and lifecycle are not implemented |
 | `media/smp/webos1` | 1.x | not written yet - and there is no webOS 1 hardware here to validate it against, so it would ship untestable |
 
