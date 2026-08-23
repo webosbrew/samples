@@ -31,6 +31,9 @@ namespace {
 const char kAppId[] = "org.webosbrew.sample.web.cbe3";
 const char kUrl[] = "https://example.com/";
 
+class SampleWindow;
+SampleWindow* g_window;
+
 class SampleWebView : public webos::WebViewBase {
  public:
   SampleWebView(int w, int h) : webos::WebViewBase(w, h) {}
@@ -39,7 +42,12 @@ class SampleWebView : public webos::WebViewBase {
     printf("[cbe] progress %3.0f%%\n", progress * 100);
   }
   void DidFirstFrameFocused() override {}
-  void DidFirstNonBlankPaint() override { puts("[cbe] first non-blank paint"); }
+  void DidFirstNonBlankPaint() override {
+    puts("[cbe] first non-blank paint");
+    // Try asserting the window state once a frame actually exists - the
+    // compositor may ignore it on a surface that has never committed a buffer.
+
+  }
   void LoadVisuallyCommitted() override { puts("[cbe] visually committed"); }
   void TitleChanged(const std::string& title) override {
     printf("[cbe] title '%s'\n", title.c_str());
@@ -72,11 +80,11 @@ class SampleWindow : public webos::WebAppWindowBase {
   bool event(WebOSEvent*) override { return false; }
 };
 
-SampleWindow* g_window;
 SampleWebView* g_webview;
 std::string g_app_path;
 
 gboolean CreateWebApp(gpointer) {
+
 
   g_window = new SampleWindow();
   // No InitWindow on webOS 3. WAM never calls Resize either, but dropping it

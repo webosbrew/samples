@@ -18,6 +18,7 @@ namespace webos {
 
 Runtime* Runtime::Get() STUB(0)
 void Runtime::InitializePlatform(const base::FilePath&) STUB()
+void Runtime::Initialize(PlatformDelegate*) STUB()
 void Runtime::SetWindowSize(int, int) STUB()
 
 WebViewBase::WebViewBase(int, int) : webview_(0) STUB()

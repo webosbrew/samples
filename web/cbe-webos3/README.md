@@ -151,7 +151,24 @@ nil, `ChromeMain` existing beside `WebOSMain`, `--webos-wam` being mandatory, an
 the only binary on the TV that links the library at all - and it should be tested rather
 than believed.
 
-`webos::Runtime` is worth knowing about either way. Unlike `Platform`, **its singleton is
+### Chasing `PlatformDelegate`, and what it cost
+
+`webos::PlatformDelegate`'s vtable is exported, so its *shape* is recoverable even though
+nothing in the firmware implements it: two destructor slots, then nine slots that are all
+`__cxa_pure_virtual` in the base. Eleven virtuals, no names, no signatures.
+
+A stub delegate with that shape is enough for `Runtime::Initialize(PlatformDelegate*)` to
+accept it, and both it and `InitializePlatform(base::FilePath)` then return cleanly. Neither
+changes anything: the host state still reads back 0 and LSM still shows the previous app.
+The delegate is never called during startup, so the unknown signatures never come up - which
+also means initialising it is not what the window is waiting for.
+
+One more idea, also dead: asserting `Show()` and `SetWindowHostState(FULLSCREEN)` from
+`DidFirstNonBlankPaint()`, on the theory that the compositor might ignore a state set on a
+surface that has never committed a buffer. It does not - `host-state=0` after the first
+frame too.
+
+### `webos::Runtime` is worth knowing about either way. Unlike `Platform`, **its singleton is
 alive in a plain embedder** - `Runtime::Get()` returns a real pointer - and it carries
 `SetWindowSize()`, `InitializePlatform(const base::FilePath&)` and
 `Initialize(webos::PlatformDelegate*)`. `SetWindowSize` and `InitializePlatform` were both

@@ -43,6 +43,25 @@ class FilePath {
 
 namespace webos {
 
+// Recovered from the exported vtable of webos::PlatformDelegate: two destructor
+// slots followed by nine pure virtuals, all of them __cxa_pure_virtual in the
+// base. The names and signatures are unknown - nothing in the firmware
+// implements this class - so these are placeholders with the right *shape*.
+// Enough to hand Runtime::Initialize something it will accept.
+class PlatformDelegate {
+ public:
+  virtual ~PlatformDelegate() {}
+  virtual void Unknown2() {}
+  virtual void Unknown3() {}
+  virtual void Unknown4() {}
+  virtual void Unknown5() {}
+  virtual void Unknown6() {}
+  virtual void Unknown7() {}
+  virtual void Unknown8() {}
+  virtual void Unknown9() {}
+  virtual void Unknown10() {}
+};
+
 // A singleton libcbe keeps for platform-wide state. Unlike webos::Platform,
 // which belongs to the browser application, this one may exist in a plain
 // embedder - and the window size lives here too.
@@ -53,6 +72,7 @@ class Runtime {
   // Suspected to be what builds webos::Platform - the layer that owns the Luna
   // side, and which is null in a plain embedder.
   void InitializePlatform(const base::FilePath& path);
+  void Initialize(PlatformDelegate* delegate);
 };
 
 
