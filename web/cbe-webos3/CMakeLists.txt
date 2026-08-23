@@ -12,11 +12,12 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 
-add_executable(web-cbe-webos3 main.cpp)
+add_executable(web-cbe-webos3 main.cpp luna_register.c)
+target_include_directories(web-cbe-webos3 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(web-cbe-webos3 SYSTEM PRIVATE ${GLIB_INCLUDE_DIRS})
 target_link_directories(web-cbe-webos3 PRIVATE ${GLIB_LIBRARY_DIRS})
 # cbe-stub-webos3 carries the include path, -fno-rtti and the old string ABI.
-target_link_libraries(web-cbe-webos3 PRIVATE cbe-stub-webos3 ${GLIB_LIBRARIES})
+target_link_libraries(web-cbe-webos3 PRIVATE cbe-stub-webos3 ${GLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 target_compile_definitions(web-cbe-webos3 PRIVATE APP_LOG_NAME="web-cbe-webos3")
 
 set_target_properties(web-cbe-webos3 PROPERTIES

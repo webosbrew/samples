@@ -129,6 +129,36 @@ as webOS 4's - `WebOSMain`, `WebAppManagerServiceLuna::instance()`,
 `WebAppManager::instance()`, `setPlatformModules` - so at process level it does what this
 sample does.
 
+### Registering with SAM: necessary, and still not sufficient
+
+A native webOS app has to tell SAM it is running. libcbe does not do it - it opens its own
+Luna connections but never registers the app - and on webOS 3 nothing else will either: WAM's
+binary registers *itself* as `com.palm.webappmanager` before handing over to `WebOSMain`.
+
+SDL-webOS does it in `SDL_webOSRegisterApp()`, and `luna_register.c` here is the same call
+with the same library, minus SDL:
+
+```c
+HLunaServiceCall("luna://com.webos.applicationManager/registerNativeApp",
+                 "{\"id\":\"org.webosbrew.sample.web.cbe3\"}", &ctx);
+```
+
+`libhelpers.so.2` is already on the TV, so it is `dlopen`ed rather than linked - one function
+is not worth a NEEDED entry and something for `-verify` to check. `ctx.multiple = 1` keeps
+the subscription open, which is how relaunch and close events arrive later. Version 1 of the
+native lifecycle interface is `registerNativeApp`; version 2 would be `registerApp`, and the
+sample's appinfo declares neither, which means 1.
+
+It works:
+
+```
+[luna] lifecycle: {"message":"registered","returnValue":true}
+[luna] registerNativeApp(org.webosbrew.sample.web.cbe3) -> 0
+```
+
+and the window still does not appear. So registration is a thing this sample was missing and
+should have been doing, and it is not what the compositor is waiting for.
+
 ### The live lead is registration. libcbe contains
 `palm://com.webos.applicationManager/registerNativeApp` and a `webos::LunaServices` class
 whose `Initialize(const base::FilePath&)` is an instance method needing a

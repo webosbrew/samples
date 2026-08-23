@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "luna_register.h"
 #include "webos/webapp_window_base.h"
 #include "webos/webview_base.h"
 
@@ -84,6 +85,9 @@ SampleWebView* g_webview;
 std::string g_app_path;
 
 gboolean CreateWebApp(gpointer) {
+  // Before anything else: tell SAM this process is the app.
+  luna_register_app(kAppId);
+
 
 
   g_window = new SampleWindow();
