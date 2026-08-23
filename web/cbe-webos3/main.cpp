@@ -82,7 +82,13 @@ gboolean CreateWebApp(gpointer) {
   // here stops the delegate firing at all and the Wayland connection starts
   // complaining "proxy already has listener", so it is doing something the
   // constructor alone does not.
+  printf("[diag] before Resize: display=%dx%d native=%p handle=%p state=%d\n",
+         g_window->DisplayWidth(), g_window->DisplayHeight(),
+         g_window->GetNativeWindow(), (void*)0, (int)g_window->GetWindowHostState());
   g_window->Resize(1920, 1080);
+  printf("[diag] after Resize:  display=%dx%d native=%p state=%d\n",
+         g_window->DisplayWidth(), g_window->DisplayHeight(),
+         g_window->GetNativeWindow(), (int)g_window->GetWindowHostState());
   g_window->SetWindowProperty("appId", kAppId);
   g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
 
@@ -97,6 +103,8 @@ gboolean CreateWebApp(gpointer) {
 
   g_window->AttachWebContents(g_webview->GetWebContents());
   g_window->Show();
+  printf("[diag] after Show:    native=%p state=%d\n",
+         g_window->GetNativeWindow(), (int)g_window->GetWindowHostState());
   // webOS 3 has no Activate(). SetHiddenState(false) and re-asserting the appId
   // after Show() are the nearest equivalents worth trying.
   g_window->SetHiddenState(false);
@@ -142,13 +150,11 @@ int main(int argc, char** argv) {
     args.push_back(std::string("--browser-subprocess-path=") + argv[0]);
     args.push_back(std::string("--user-data-dir=/tmp/") + kAppId);
     // Borrowed from WAM's own WAM_SWITCHES on this generation, pending bisection.
-    args.push_back(std::string("--app-id=") + kAppId);
+    // Required, not decorative: without --webos-wam the process exits before
+    // writing a line of log. --app-id, which also exists in libcbe, turned out
+    // to make no difference either way.
     args.push_back("--webos-wam");
     args.push_back("--noerrdialogs");
-    args.push_back("--disable-extensions");
-    args.push_back("--touch-events=disabled");
-    args.push_back("--num-raster-threads=2");
-    args.push_back("--enable-threaded-compositing");
   }
   for (int i = 1; i < argc; ++i) args.push_back(argv[i]);
 

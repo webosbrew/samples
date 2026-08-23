@@ -87,7 +87,36 @@ And `WebAppWaylandWindow::show()` in webOS 3's WAM turns out to be nothing but
 `onStageActivated()` - pure WAM bookkeeping, no libcbe calls - followed by
 `WebAppWindowBase::Show()`, so WAM is not doing anything special that the sample omits.
 
-The live lead is registration. libcbe contains
+### What the window itself reports
+
+The clearest symptom, from the diagnostics the sample prints:
+
+```
+[diag] before Resize: display=1920x1080 native=0x690b0 state=0
+[diag] after Resize:  display=1920x1080 native=0x690b0 state=0
+[diag] after Show:    native=0x690b0 state=0
+```
+
+The window object is real - a non-null native handle and the right panel size - but
+`GetWindowHostState()` stays `0` (`NATIVE_WINDOW_DEFAULT`) through
+`SetWindowHostState(NATIVE_WINDOW_FULLSCREEN)` and through `Show()`. The compositor never
+acknowledges the state, which is a better description of the failure than "the window does
+not appear": the surface exists and is being drawn into, and LSM is simply not treating it
+as an app window.
+
+The enum is not the problem - WAM passes literal `3` for fullscreen, matching
+`NATIVE_WINDOW_FULLSCREEN` here - and neither is the call sequence. Disassembling
+`WebAppWayland::raise()`, webOS 3's equivalent of webOS 4's `Activate()`, shows it makes
+exactly one libcbe call, `SetWindowHostState(3)`, which the sample already does.
+
+Two more switches turn out to be load-bearing rather than decorative: **`--webos-wam` is
+required** - without it the process exits before writing a line of log - while `--app-id`,
+which also exists in the library, changes nothing either way.
+
+The app does reach the Luna bus: `ls-monitor -l` shows two client-only connections owned by
+the executable, without a service name. So libcbe's own LS2 client is running.
+
+### The live lead is registration. libcbe contains
 `palm://com.webos.applicationManager/registerNativeApp` and a `webos::LunaServices` class
 whose `Initialize(const base::FilePath&)` is an instance method needing a
 `webos::LunaServices(webos::Platform*)` - and `Platform` is the browser application's layer,
@@ -95,5 +124,18 @@ built by `ChromeMain` rather than by `WebOSMain`. So on this generation the Luna
 registration that a native app needs may simply live on the browser's side of the library
 and not the embedder's. That is a hypothesis, not a finding.
 
+### A conclusion worth considering
+
+Both in-firmware users of libcbe on webOS 3 bring their own window management: WAM wraps
+`WebOSMain` in `WebAppWayland`, and the browser does not use `WebOSMain` at all - it uses
+`ChromeMain`, which is what constructs `webos::Platform` and its Luna side. There may
+therefore be no supported standalone-embedder path on this generation, and `WebOSMain` alone
+may be expected to yield a rendering web view whose *window* somebody else owns. webOS 4,
+where the same sample works unchanged, would then be the generation that fixed it.
+
+That is a hypothesis with three pieces of evidence behind it - `Platform::Get()` returning
+nil, `ChromeMain` existing beside `WebOSMain`, and `--webos-wam` being mandatory - and it
+should be tested rather than believed.
+
 So this is honest work-in-progress. The hard half - the ABI - is done and demonstrated. The
-window handover is not, and the next person should start at `LunaServices`.
+window handover is not, and the next person should start at `LunaServices` and `ChromeMain`.
