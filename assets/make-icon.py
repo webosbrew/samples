@@ -34,6 +34,7 @@ ICONS = {
     "web-cbe":            ("CBE", "w4", "globe"),
     "web-cbe-webos3":     ("CBE", "w3", "globe"),
     "web-cbe-webos6":     ("CBE", "w6+", "globe"),
+    "web-neva":           ("NEVA", "w6+", "globe"),
     "web-hybrid":         ("SDL+", "w4", "globe"),
 }
 
