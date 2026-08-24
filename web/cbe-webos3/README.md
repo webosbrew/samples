@@ -1,5 +1,15 @@
 # web/cbe, on webOS 3
 
+> **Status: unfinished, and parked.** The reconstructed ABI is correct and demonstrated -
+> the page loads and every delegate callback fires - but the window never reaches the
+> screen. The failure is localised (see "Where the gap actually is") and the dead ends are
+> written down so nobody repeats them. Picking this up again means interactive Ghidra work
+> on `weboswayland::WaylandDisplay`, not more black-box probing.
+>
+> If you want a *working* embedded web view, use `web/cbe` on webOS 4, or the
+> `neva_app_runtime` API on webOS 6 and newer - the latter has public upstream headers and
+> needs no reverse engineering at all.
+
 The same twenty lines of "make a window, make a web view, load a URL" as `web/cbe`, against
 the libcbe that shipped on webOS 3. Everything that differs is the library moving underneath
 it, and there is more of that than the version numbers suggest.
