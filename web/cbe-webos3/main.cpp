@@ -177,6 +177,9 @@ int main(int argc, char** argv) {
     // Required: without --webos-wam the process exits before writing a log line.
     args.push_back("--webos-wam");
     args.push_back("--noerrdialogs");
+    // Page console.log lands in the app's log with this. --v=1 adds nothing:
+    // verbose logging is compiled out of this build.
+    args.push_back("--enable-logging=stderr");
     // webOS 3's GPU path needs more setup than webOS 4's. Without these the
     // command buffer fails to initialise - "Could not send
     // GpuCommandBufferMsg_Initialize". From WAM's own WAM_SWITCHES.

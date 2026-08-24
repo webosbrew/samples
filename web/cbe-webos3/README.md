@@ -238,6 +238,43 @@ Two pieces of the browser's setup were adopted and kept, because they are right 
 * `CHROMIUM_BROWSER=yes` and `BROWSER_NAME=Chromium38`, which the browser has in its
   environment and a plain native app does not.
 
+### Where the gap actually is
+
+Everything observable on both sides of the comparison now matches, and the list is worth
+having so nobody re-checks it:
+
+| | this sample | WAM |
+|---|---|---|
+| Wayland requests sent | identical but for `xinput_extension.register_input` | |
+| threads | `Chrome_InProcGp`, `WaylandDisplayP`, and the rest | same set |
+| environment | identical after adding `CHROMIUM_BROWSER`, `BROWSER_NAME`, fontconfig | |
+| SAM registration | `registered`, listed in `/running` | |
+| window object | 1920x1080, native pointer, handle 1 | |
+| web contents | non-null, attached | |
+| delegate callbacks | all fire, including `DidFirstNonBlankPaint` | |
+
+That last row is the one that localises it. **`DidFirstNonBlankPaint` fires, so the renderer
+is painting.** What never happens is the browser-side compositor turning that into a frame:
+`CreateAcceleratedSurface` is never reached, so there is no EGL surface, so no buffer, so no
+`wl_surface.attach`.
+
+So the gap is between "renderer has painted" and "browser compositor asks the GPU for an
+output surface for widget 1". Two libcbe stubs sit near that path and are logged every run:
+
+```
+ERROR:webos_view.cc(102)]  Not implemented ... content::WebContents* WebOSView::GetActiveWebContents() const
+ERROR:display.cc(305)]     Not implemented ... weboswayland::WaylandDisplay::SetWidgetState(... SHOW ...)
+```
+
+`GetActiveWebContents()` returning nothing from the view that is supposed to host the
+contents is the more suspicious of the two, and it fires twice per run. Whether WAM avoids
+it - by overriding the view, or by never reaching it - is the next thing to establish, and
+it needs decompiling libcbe's `WebOSView`/`WebOSWidgetView` rather than more probing from
+outside.
+
+Chromium's own verbose logging is no help: `--v=1` adds nothing, because `VLOG` is compiled
+out of this build.
+
 **So can the WAM side ever show a window?** On the evidence, yes: WAM produces buffers on
 exactly this backend, through exactly this API, in the browser process, on the same TV. What
 has not been found is what triggers the first frame. LSM's `state_changed` arrives only
