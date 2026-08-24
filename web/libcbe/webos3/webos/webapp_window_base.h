@@ -53,6 +53,8 @@ class WebAppWindowBase : public WebAppWindowDelegate {
   void SetWindowProperty(const std::string& name, const std::string& value);
   void SetUseVirtualKeyboard(bool enable);
   void SetKeyMask(WebOSKeyMask key_mask, bool set);
+  // The handle the GPU side uses to make an accelerated surface for this window.
+  unsigned GetWindowHandle();
   int DisplayWidth();
   int DisplayHeight();
 

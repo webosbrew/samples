@@ -63,6 +63,7 @@ NativeWindowState WebAppWindowBase::GetWindowHostState() const STUB(NATIVE_WINDO
 void WebAppWindowBase::SetWindowProperty(const std::string&, const std::string&) STUB()
 void WebAppWindowBase::SetUseVirtualKeyboard(bool) STUB()
 void WebAppWindowBase::SetKeyMask(WebOSKeyMask, bool) STUB()
+unsigned WebAppWindowBase::GetWindowHandle() STUB(0)
 int WebAppWindowBase::DisplayWidth() STUB(0)
 int WebAppWindowBase::DisplayHeight() STUB(0)
 

@@ -107,14 +107,19 @@ gboolean CreateWebApp(gpointer) {
   g_webview->SetAllowLocalResourceLoad(true);
   g_webview->SetLocalStorageEnabled(true);
   g_webview->SetVisible(true);
+  // Chromium does not paint a page it believes is hidden, and nothing sets this
+  // for us - libcbe leaves the visibility state at its default.
+  g_webview->SetVisibilityState(webos::WebViewBase::VISIBILITY_VISIBLE);
 
-  g_window->AttachWebContents(g_webview->GetWebContents());
+  g_window->SetHiddenState(false);
   g_window->Show();
+  g_window->AttachWebContents(g_webview->GetWebContents());
   // Reads back 0 - NATIVE_WINDOW_DEFAULT - however the state is set. The
   // compositor never acknowledges it, which is the whole problem.
-  printf("[cbe] window %dx%d native=%p host-state=%d\n",
+  printf("[cbe] window %dx%d native=%p handle=%u host-state=%d\n",
          g_window->DisplayWidth(), g_window->DisplayHeight(),
-         g_window->GetNativeWindow(), (int)g_window->GetWindowHostState());
+         g_window->GetNativeWindow(), g_window->GetWindowHandle(),
+         (int)g_window->GetWindowHostState());
   // webOS 3 has no Activate(). SetHiddenState(false) and re-asserting the appId
   // after Show() are the nearest equivalents worth trying.
   g_window->SetHiddenState(false);
@@ -157,11 +162,16 @@ int main(int argc, char** argv) {
     args.push_back("--no-sandbox");
     args.push_back("--no-zygote");
     args.push_back("--in-process-gpu");
-    // webOS 3's GPU path needs more setup than webOS 4's: without these the
-    // command buffer fails to initialise ("Could not send
-    // GpuCommandBufferMsg_Initialize") and the compositor never produces a
-    // frame, so nothing is ever committed to the window's Wayland surface.
-    // Taken from WAM's own WAM_SWITCHES on this generation.
+    args.push_back(std::string("--browser-subprocess-path=") + argv[0]);
+    args.push_back(std::string("--user-data-dir=/tmp/") + kAppId);
+    // Required, not decorative: without --webos-wam the process exits before
+    // writing a line of log.
+    args.push_back("--webos-wam");
+    args.push_back("--noerrdialogs");
+    // webOS 3's GPU path needs more setup than webOS 4's. Without these the
+    // command buffer fails to initialise - "Could not send
+    // GpuCommandBufferMsg_Initialize" - and Chromium cannot draw at all. From
+    // WAM's own WAM_SWITCHES on this generation.
     args.push_back("--enable-gpu-rasterization");
     args.push_back("--enable-impl-side-painting");
     args.push_back("--ignore-gpu-blacklist");
@@ -170,15 +180,6 @@ int main(int argc, char** argv) {
     args.push_back("--ui-use-prepare-shader-program");
     args.push_back("--ui-disable-opaque-shader-program");
     args.push_back("--disable-low-res-tiling");
-
-    args.push_back(std::string("--browser-subprocess-path=") + argv[0]);
-    args.push_back(std::string("--user-data-dir=/tmp/") + kAppId);
-    // Borrowed from WAM's own WAM_SWITCHES on this generation, pending bisection.
-    // Required, not decorative: without --webos-wam the process exits before
-    // writing a line of log. --app-id, which also exists in libcbe, turned out
-    // to make no difference either way.
-    args.push_back("--webos-wam");
-    args.push_back("--noerrdialogs");
   }
   for (int i = 1; i < argc; ++i) args.push_back(argv[i]);
 
