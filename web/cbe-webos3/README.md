@@ -143,10 +143,9 @@ contradict what was being used here:
 --set-maximized --window-size=1920,1080
 ```
 
-There is no `--webos-wam` at all. `weboswayland` is WAM's backend - the one whose
-`SetWidgetState` leaves `SHOW` unimplemented - and a non-WAM app is evidently expected to
-use plain `wayland` and identify itself through `--webos-launch-json`, whose `nid` is the
-app id.
+There is no `--webos-wam` at all. `weboswayland` is WAM's backend, and a non-WAM app is
+evidently expected to use plain `wayland` and identify itself through
+`--webos-launch-json`, whose `nid` is the app id.
 
 Adopting it does not work yet, and bisecting says exactly which part is fatal: with
 everything else from the browser adopted - the launch-json handling below,
@@ -183,7 +182,7 @@ two platforms into one by then, so `wayland` and `WebAppWindowBase` are the same
 webOS 3 they are not, and a standalone embedder has to pick a side:
 
 * **WAM's side** (`weboswayland` + `WebAppWindowBase`) - what this sample does. Everything
-  works except mapping the window, because `SetWidgetState` leaves `SHOW` unimplemented.
+  works except the browser-side compositor ever producing a frame.
 * **The browser's side** (`wayland` + Views) - a working standalone embedder exists, but it
   is a different API surface entirely, and none of the reconstructed headers here apply
   to it.
@@ -313,10 +312,10 @@ has not been found is what triggers the first frame. LSM's `state_changed` arriv
 having no buffer, not a cause.
 
 **Where that leaves it.** The sample stays on `weboswayland`, which is the only backend its
-API exists on. Getting a window there means getting past `SetWidgetState(SHOW)` being a
-stub; getting one the browser's way means reconstructing `Browser`, `content::BrowserContext`
-and the Views classes instead, which is a much larger job than the embedding API this
-directory is about.
+API exists on. Getting a window there means finding what makes the browser-side compositor
+ask the GPU for an output surface; getting one the browser's way means reconstructing
+`Browser`, `content::BrowserContext` and the Views classes instead, which is a much larger
+job than the embedding API this directory is about.
 
 ### Registering with SAM: necessary, and still not sufficient
 
