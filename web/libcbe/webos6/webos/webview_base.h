@@ -144,8 +144,12 @@ class WebViewDelegate {
   virtual void Unknown51() {}
   // slot 52 - name not recoverable; WAM implements it with a local function.
   virtual void Unknown52() {}
-  // slot 53 - name not recoverable; WAM implements it with a local function.
-  virtual void Unknown53() {}
+  // slot 53 is GetWebContents(), and it is virtual - libcbe calls it through the
+  // vtable during Initialize(). Declaring it void, as a placeholder, hands
+  // libcbe whatever was in r0 as a WebContents pointer and the process dies
+  // inside Initialize. It is pure here and overridden in WebViewBase below with
+  // no body, so the slot resolves to libcbe's own implementation at link time.
+  virtual void* GetWebContents() = 0;
   // slot 54
   virtual void HandleBrowserControlCommand(const std::string& command,
                                           const std::vector<std::string>& args) { (void)command; (void)args; }
@@ -188,7 +192,7 @@ class WebViewBase : public WebViewDelegate {
                   WebViewMode mode,
                   bool inspectable);
 
-  void* GetWebContents();
+  void* GetWebContents() override;  // implemented by libcbe, not by us
   void LoadUrl(const std::string& url);
   void StopLoading();
   void Reload();

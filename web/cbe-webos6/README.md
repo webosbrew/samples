@@ -1,10 +1,7 @@
 # web/cbe, on webOS 6 and newer
 
-> **Status: unfinished.** The ABI is mapped and the sample builds, verifies clean and
-> starts - it reaches libcbe's delegate - but the delegate arrives with mis-decoded
-> arguments and the process then dies. The slot layout below is right in outline and wrong
-> in some detail. Everything established so far is written down here; `web/cbe` on webOS 4
-> is the one that works.
+**Verified on a 65UP7560 (starfish 6.5.2):** the page loads and renders full-screen, and
+the app becomes the foreground app.
 
 Measured on a **65UP7560 running starfish 6.5.2** (Chromium 79).
 
@@ -68,10 +65,26 @@ It is the API with public upstream headers (`webosose/chromium87`,
 
 That is why this sample stays on `webos::`.
 
-## What is still wrong
+## The slot that has a return value
 
-The delegate is reached - `DidStartNavigation` fires - but its `const std::string&` arrives
-as garbage, so a slot is misaligned or a signature is wrong somewhere in the first 17. The
-base `webos::WebViewBase` vtable counts 51 relocated slots against `BlinkWebView`'s 61,
-which is the obvious place to start: confirm the 51 really are a prefix of the 61, and that
-no thunk entries shift the numbering.
+Most delegate slots return `void`, so a placeholder with an empty body is harmless: the
+caller ignores whatever is in `r0`. **Slot 53 is not one of them.** It is
+`GetWebContents()`, it is virtual, and libcbe calls it through the vtable *during*
+`Initialize()`. Declared as a `void` placeholder, it hands libcbe whatever happened to be in
+`r0` as a `WebContents*`, and the process dies inside `Initialize` with a backtrace that
+points at libcbe rather than at the mistake.
+
+It is declared pure in the delegate and overridden in `WebViewBase` **with no body**, so the
+slot resolves to libcbe's own `_ZN5webos11WebViewBase14GetWebContentsEv` at link time - the
+app inherits the real implementation instead of shadowing it.
+
+Finding it took a slot tracer: replacing every one of the 61 overrides with a body that
+prints its own index and touches no argument. Exactly one line came out -
+
+```
+[slot] 53
+```
+
+- which named the culprit immediately, where reading arguments had only produced garbage.
+The same trick is worth reaching for on any of these reconstructed vtables: **a slot that
+returns a pointer cannot be stubbed, and a tracer finds it in one run.**

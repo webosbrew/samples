@@ -76,7 +76,10 @@ gboolean CreateWebApp(gpointer) {
   g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
 
   g_webview = new SampleWebView(1920, 1080);
-  g_webview->Initialize(kAppId, g_app_path, "default", "", "", 1920, 1080, false,
+  // WAM passes the same register for all five trailing arguments, so they are
+  // zeros there - width and height included. The size comes from the
+  // constructor on this generation, not from here.
+  g_webview->Initialize(kAppId, g_app_path, "default", "", "", 0, 0, false,
                         webos::WebViewBase::WEBVIEW_MODE_NORMAL, false);
   g_webview->SetAppId(kAppId);
   g_webview->SetAllowLocalResourceLoad(true);
