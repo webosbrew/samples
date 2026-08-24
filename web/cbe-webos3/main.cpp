@@ -183,12 +183,24 @@ int main(int argc, char** argv) {
     args.push_back("--ui-disable-opaque-shader-program");
     args.push_back("--disable-low-res-tiling");
   }
-  for (int i = 1; i < argc; ++i) args.push_back(argv[i]);
+  // SAM hands a native app its launch parameters as a bare JSON argument. The
+  // TV's own browser turns that into --webos-launch-json and does not forward
+  // the raw form; libcbe would otherwise treat it as a URL.
+  for (int i = 1; i < argc; ++i) {
+    if (browser && argv[i][0] == '{') {
+      args.push_back(std::string("--webos-launch-json=") + argv[i]);
+    } else {
+      args.push_back(argv[i]);
+    }
+  }
 
   std::vector<const char*> cargv;
   for (size_t i = 0; i < args.size(); ++i) cargv.push_back(args[i].c_str());
 
   if (!getenv("XDG_RUNTIME_DIR")) setenv("XDG_RUNTIME_DIR", "/tmp/xdg", 1);
+  // The native browser has these; a plain native app does not.
+  setenv("CHROMIUM_BROWSER", "yes", 1);
+  setenv("BROWSER_NAME", "Chromium38", 1);
 
   // webOS 3's WebOSMain does std::string(getenv("CDM_LIB_PATH")) with no null
   // check and appends "/libwidevinecdmadapter.so" to it, so an unset variable

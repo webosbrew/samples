@@ -148,15 +148,27 @@ There is no `--webos-wam` at all. `weboswayland` is WAM's backend - the one whos
 use plain `wayland` and identify itself through `--webos-launch-json`, whose `nid` is the
 app id.
 
-Adopting that configuration verbatim does not work yet: the process dies during startup,
-inside libcbe under `__vsnprintf_chk`. Dropping just the launch-json and keeping
-`--ozone-platform=wayland` dies too. So something else in the browser's setup is required -
-it runs jailed under `/var/palm/jail/com.webos.app.browser`, which is the obvious next
-suspect. The sample therefore still ships the `weboswayland` + `--webos-wam` combination,
-which is the only one found so far that starts at all.
+Adopting it does not work yet, and bisecting says exactly which part is fatal: with
+everything else from the browser adopted - the launch-json handling below,
+`CHROMIUM_BROWSER=yes`, `BROWSER_NAME=Chromium38`, its GPU switches - the sample still runs
+fine on `weboswayland`, and switching that one flag to `--ozone-platform=wayland` kills it
+before Chromium writes a single log line. The log is zero bytes and the crash lands under
+`__vsnprintf_chk` inside libcbe.
 
-**This is the thread to pull.** A working standalone embedder exists on the same TV; the
-remaining work is finding what else it needs.
+So `--ozone-platform=wayland` is the blocker, on its own, and the jail is not it: this
+sample is jailed too, under `/var/palm/jail/org.webosbrew.sample.web.cbe3`.
+
+Two pieces of the browser's setup were adopted and kept, because they are right regardless:
+
+* **SAM hands a native app its launch parameters as a bare JSON argument**, and the browser
+  turns that into `--webos-launch-json=` rather than forwarding it - libcbe would otherwise
+  see `{"nid":...}` where it expects a URL. The sample now does the same.
+* `CHROMIUM_BROWSER=yes` and `BROWSER_NAME=Chromium38`, which the browser has in its
+  environment and a plain native app does not.
+
+**This is the thread to pull.** A working standalone embedder exists on the same TV, its
+configuration is known, and the difference is down to one switch that the sample cannot yet
+survive.
 
 ### Registering with SAM: necessary, and still not sufficient
 
