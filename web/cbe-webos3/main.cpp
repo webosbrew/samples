@@ -111,21 +111,16 @@ gboolean CreateWebApp(gpointer) {
   // for us - libcbe leaves the visibility state at its default.
   g_webview->SetVisibilityState(webos::WebViewBase::VISIBILITY_VISIBLE);
 
-  g_window->SetHiddenState(false);
-  g_window->Show();
+  // Show() is a no-op on this generation - see README - so the window state is
+  // set directly. Neither maps the surface; libcbe reaches SetWidgetState(SHOW)
+  // internally regardless, and that is the stub.
   g_window->AttachWebContents(g_webview->GetWebContents());
-  // Reads back 0 - NATIVE_WINDOW_DEFAULT - however the state is set. The
-  // compositor never acknowledges it, which is the whole problem.
+  g_window->Show();
+  g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
   printf("[cbe] window %dx%d native=%p handle=%u host-state=%d\n",
          g_window->DisplayWidth(), g_window->DisplayHeight(),
          g_window->GetNativeWindow(), g_window->GetWindowHandle(),
          (int)g_window->GetWindowHostState());
-  // webOS 3 has no Activate(). SetHiddenState(false) and re-asserting the appId
-  // after Show() are the nearest equivalents worth trying.
-  g_window->SetHiddenState(false);
-  g_window->SetOpacity(1.0f);
-  g_window->SetWindowProperty("appId", kAppId);
-  g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
 
   printf("[cbe] loading %s\n", kUrl);
   g_webview->LoadUrl(kUrl);
