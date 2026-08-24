@@ -267,10 +267,40 @@ ERROR:display.cc(305)]     Not implemented ... weboswayland::WaylandDisplay::Set
 ```
 
 `GetActiveWebContents()` returning nothing from the view that is supposed to host the
-contents is the more suspicious of the two, and it fires twice per run. Whether WAM avoids
-it - by overriding the view, or by never reaching it - is the next thing to establish, and
-it needs decompiling libcbe's `WebOSView`/`WebOSWidgetView` rather than more probing from
-outside.
+contents looked like the answer, and it is worth writing down why it is not - along with
+the technique, because that is the reusable part.
+
+#### Finding a stub's callers in a stripped 65 MB binary
+
+libcbe has no `.symtab`, and these functions are local, so the only handle is the
+`NOTIMPLEMENTED` string. ARM Thumb reaches it PC-relatively, as a literal `V` plus an
+`add rX, pc` at address `P`, where `V = target - (P + 4)`. So scan `.text` for words whose
+implied `P` lands within a few KB *and* decodes as `add rX, pc` (`0x4478`-`0x447f`):
+
+```python
+V = struct.unpack_from('<i', data, toff + i)[0]
+P = string_va - 4 - V
+ins = struct.unpack_from('<H', data, off_of(P))[0]
+if 0x4478 <= ins <= 0x447f: ...        # a real reference
+```
+
+That gives three sites for this string, and disassembling the first shows the stub body -
+`logging::GetMinLogLevel`, a `LogMessage` built with line 102, matching
+`webos_view.cc(102)`. Its single caller is four instructions long:
+
+```asm
+bl   GetActiveWebContents()   ; the stub - returns NULL
+cbz  r0, done                 ; NULL, so give up silently
+ldr  r3, [r0]                 ; contents->vptr
+ldr  r3, [r3, #356]           ; slot 89
+blx  r3
+```
+
+So libcbe wants to call one method on the active `WebContents` and skips it because the
+accessor is a stub. **We hold that pointer** - `WebViewBase::GetWebContents()` returns it -
+so the call libcbe skipped can be made by hand through the same vtable slot. Doing that
+runs cleanly and changes nothing: no window, host state still 0. Whatever slot 89 is, it is
+not what starts compositing, and the stub is a red herring.
 
 Chromium's own verbose logging is no help: `--v=1` adds nothing, because `VLOG` is compiled
 out of this build.

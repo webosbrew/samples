@@ -124,6 +124,7 @@ gboolean CreateWebApp(gpointer) {
   // internally regardless, and that is the stub.
   void* contents = g_webview->GetWebContents();
   g_window->AttachWebContents(contents);
+
   g_window->Show();
   g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
   // Everything here reads back valid except the host state, which stays 0
