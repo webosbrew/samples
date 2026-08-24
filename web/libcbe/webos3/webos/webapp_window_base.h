@@ -48,6 +48,8 @@ class WebAppWindowBase : public WebAppWindowDelegate {
 
   void Resize(int width, int height);
   void SetOpacity(float opacity);
+  // WAM calls this; a window whose scale is left at zero has nothing to render.
+  void SetScaleFactor(float scale);
   void SetWindowHostState(NativeWindowState state);
   NativeWindowState GetWindowHostState() const;
   void SetWindowProperty(const std::string& name, const std::string& value);

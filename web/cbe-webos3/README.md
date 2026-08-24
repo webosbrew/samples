@@ -238,6 +238,13 @@ Two pieces of the browser's setup were adopted and kept, because they are right 
 * `CHROMIUM_BROWSER=yes` and `BROWSER_NAME=Chromium38`, which the browser has in its
   environment and a plain native app does not.
 
+**So can the WAM side ever show a window?** On the evidence, yes: WAM produces buffers on
+exactly this backend, through exactly this API, in the browser process, on the same TV. What
+has not been found is what triggers the first frame. LSM's `state_changed` arrives only
+*after* a buffer - the working SDL sample shows `attach`, `damage`, `commit`, and only then
+`state_changed(3)` and `exposed` - so the host state reading back 0 is a consequence of
+having no buffer, not a cause.
+
 **Where that leaves it.** The sample stays on `weboswayland`, which is the only backend its
 API exists on. Getting a window there means getting past `SetWidgetState(SHOW)` being a
 stub; getting one the browser's way means reconstructing `Browser`, `content::BrowserContext`

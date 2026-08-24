@@ -96,6 +96,9 @@ gboolean CreateWebApp(gpointer) {
   // complaining "proxy already has listener", so it is doing something the
   // constructor alone does not.
   g_window->Resize(1920, 1080);
+  g_window->SetScaleFactor(1.0f);
+  g_window->SetOpacity(1.0f);
+  g_window->SetHiddenState(false);
   // LSM ignores a surface with no window type. WAM sets this on every window it
   // creates, and it is the one property the earlier attempts were missing - see
   // its Wayland trace in README.md.
@@ -119,12 +122,15 @@ gboolean CreateWebApp(gpointer) {
   // Show() is a no-op on this generation - see README - so the window state is
   // set directly. Neither maps the surface; libcbe reaches SetWidgetState(SHOW)
   // internally regardless, and that is the stub.
-  g_window->AttachWebContents(g_webview->GetWebContents());
+  void* contents = g_webview->GetWebContents();
+  g_window->AttachWebContents(contents);
   g_window->Show();
   g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
-  printf("[cbe] window %dx%d native=%p handle=%u host-state=%d\n",
+  // Everything here reads back valid except the host state, which stays 0
+  // because the compositor never acknowledges a surface that has no buffer.
+  printf("[cbe] window %dx%d native=%p handle=%u contents=%p host-state=%d\n",
          g_window->DisplayWidth(), g_window->DisplayHeight(),
-         g_window->GetNativeWindow(), g_window->GetWindowHandle(),
+         g_window->GetNativeWindow(), g_window->GetWindowHandle(), contents,
          (int)g_window->GetWindowHostState());
 
   printf("[cbe] loading %s\n", kUrl);
