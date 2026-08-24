@@ -158,10 +158,10 @@ int main(int argc, char** argv) {
     // name, and the wrong one gets as far as constructing a std::string from a
     // null and aborting with basic_string::_S_construct. Taken from WAM's own
     // WAM_SWITCHES on the device.
-    // weboswayland, not wayland: this is WAM's backend, and it is the only
-    // combination found so far that starts at all. See README - webOS 3's own
-    // native browser uses plain "wayland" with --webos-launch-json, and copying
-    // that verbatim crashes here, which is the open thread.
+    // weboswayland, and it has to be: WebAppWindowBase only exists on that
+    // backend. Constructing one under --ozone-platform=wayland segfaults inside
+    // libcbe before the constructor returns. See README - webOS 3 ships two
+    // ozone platforms and this API belongs to one of them.
     args.push_back("--ozone-platform=weboswayland");
     args.push_back("--no-sandbox");
     args.push_back("--no-zygote");

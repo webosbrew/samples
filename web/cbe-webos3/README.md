@@ -158,7 +158,37 @@ before Chromium writes a single log line. The log is zero bytes and the crash la
 So `--ozone-platform=wayland` is the blocker, on its own, and the jail is not it: this
 sample is jailed too, under `/var/palm/jail/org.webosbrew.sample.web.cbe3`.
 
-#### How far the `wayland` backend now gets
+#### Why `wayland` cannot work here: two platforms, two window APIs
+
+Stepping through the startup one `puts()` at a time puts the crash in
+`new SampleWindow()` - the `webos::WebAppWindowBase` constructor - and it is not timing:
+delaying window creation by three seconds crashes identically.
+
+That is the whole answer, and the rest of the evidence lines up behind it:
+
+* webOS 3's libcbe contains **two** ozone platforms, `ozonewayland` (registered as
+  `wayland`) and `weboswayland`. webOS 4's contains only `ozonewayland`.
+* On the TV, `weboswayland` is passed by exactly one process, `/usr/bin/WebAppMgr`. The
+  native browser passes `wayland`.
+* The browser's binary does not reference `WebAppWindowBase` **at all** - it builds its UI
+  from `Browser::Init(content::BrowserContext*, aura::Window*)` and the Views stack.
+
+So the two are a matched pair. `WebAppWindowBase` is WAM's windowing API and belongs to
+`weboswayland`; `wayland` is for Views-based apps like the browser, which use a different
+and much larger API. Constructing a `WebAppWindowBase` under `wayland` segfaults inside
+libcbe before the constructor returns, because that object has no backend there.
+
+That also explains why `web/cbe` works on webOS 4 with the identical code: LG collapsed the
+two platforms into one by then, so `wayland` and `WebAppWindowBase` are the same world. On
+webOS 3 they are not, and a standalone embedder has to pick a side:
+
+* **WAM's side** (`weboswayland` + `WebAppWindowBase`) - what this sample does. Everything
+  works except mapping the window, because `SetWidgetState` leaves `SHOW` unimplemented.
+* **The browser's side** (`wayland` + Views) - a working standalone embedder exists, but it
+  is a different API surface entirely, and none of the reconstructed headers here apply
+  to it.
+
+#### How far the `wayland` backend gets before that
 
 Two of the browser's remaining differences turn out to be required, and finding the first
 one needed the crash report rather than the log - because the log was the casualty.
@@ -208,9 +238,11 @@ Two pieces of the browser's setup were adopted and kept, because they are right 
 * `CHROMIUM_BROWSER=yes` and `BROWSER_NAME=Chromium38`, which the browser has in its
   environment and a plain native app does not.
 
-**This is the thread to pull.** A working standalone embedder exists on the same TV, its
-configuration is known, and the difference is down to one switch that the sample cannot yet
-survive.
+**Where that leaves it.** The sample stays on `weboswayland`, which is the only backend its
+API exists on. Getting a window there means getting past `SetWidgetState(SHOW)` being a
+stub; getting one the browser's way means reconstructing `Browser`, `content::BrowserContext`
+and the Views classes instead, which is a much larger job than the embedding API this
+directory is about.
 
 ### Registering with SAM: necessary, and still not sufficient
 
