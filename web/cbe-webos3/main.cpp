@@ -201,6 +201,8 @@ int main(int argc, char** argv) {
   // The native browser has these; a plain native app does not.
   setenv("CHROMIUM_BROWSER", "yes", 1);
   setenv("BROWSER_NAME", "Chromium38", 1);
+  setenv("FONTCONFIG_PATH", "/etc/fonts", 1);
+  setenv("FONTCONFIG_FILE", "/etc/fonts/fonts.conf", 1);
 
   // webOS 3's WebOSMain does std::string(getenv("CDM_LIB_PATH")) with no null
   // check and appends "/libwidevinecdmadapter.so" to it, so an unset variable

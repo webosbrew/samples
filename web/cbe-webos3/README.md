@@ -158,6 +158,48 @@ before Chromium writes a single log line. The log is zero bytes and the crash la
 So `--ozone-platform=wayland` is the blocker, on its own, and the jail is not it: this
 sample is jailed too, under `/var/palm/jail/org.webosbrew.sample.web.cbe3`.
 
+#### How far the `wayland` backend now gets
+
+Two of the browser's remaining differences turn out to be required, and finding the first
+one needed the crash report rather than the log - because the log was the casualty.
+
+**`FONTCONFIG_PATH` and `FONTCONFIG_FILE` must be set.** Without them the process dies with
+a zero-byte log, and the backtrace lands in `__vsnprintf_chk` called from libcbe. Reading
+the disassembly at that address shows a varargs logging helper: an `__snprintf_chk` for the
+prefix, then `__vsnprintf_chk` for the message. **libcbe crashes inside its own logger**,
+which is why nothing is ever written - whatever it was trying to report is lost with it.
+Pointing the two variables at the system `/etc/fonts` is enough; the browser points them at
+its own bundled copy.
+
+With those set, the `wayland` backend gets much further - through Ozone init, SAM
+registration and the Luna lifecycle subscription - before dying again:
+
+```
+[0824/183136:INFO:desktop_factory_wayland.cc(17)] Ozone: DesktopFactoryWayland
+...
+[luna] registerNativeApp(org.webosbrew.sample.web.cbe3) -> 0
+[0100/000000:ERROR:zygote_linux.cc(622)] write: Broken pipe
+```
+
+That last line is a forked child noticing its parent has gone. The parent's own crash is a
+virtual call through a garbage vtable pointer, in what the disassembly shows to be a
+set-delegate helper - store the pointer at `this+64`, then immediately call slot 10 on it:
+
+```asm
+str  r1, [r0, #64]     ; this->delegate = arg
+cbz  r1, done
+ldr  r2, [r1]          ; r2 = arg->vptr
+ldr  r2, [r2, #40]     ; <- SIGSEGV, vtable slot 10
+blx  r2
+```
+
+So the `wayland` path wants a delegate that a WAM-shaped embedder never has to supply. It
+is not this sample's reconstructed vtables at fault: on `weboswayland` every delegate
+callback arrives correctly.
+
+`--no-zygote` is also required - removing it, as the browser does, regresses to a zero-byte
+log again.
+
 Two pieces of the browser's setup were adopted and kept, because they are right regardless:
 
 * **SAM hands a native app its launch parameters as a bare JSON argument**, and the browser
