@@ -96,7 +96,12 @@ gboolean CreateWebApp(gpointer) {
   // complaining "proxy already has listener", so it is doing something the
   // constructor alone does not.
   g_window->Resize(1920, 1080);
+  // LSM ignores a surface with no window type. WAM sets this on every window it
+  // creates, and it is the one property the earlier attempts were missing - see
+  // its Wayland trace in README.md.
+  g_window->SetWindowProperty("_WEBOS_WINDOW_TYPE", "_WEBOS_WINDOW_TYPE_CARD");
   g_window->SetWindowProperty("appId", kAppId);
+  g_window->SetWindowProperty("title", "CBE WebView");
   g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
 
   g_webview = new SampleWebView(1920, 1080);   // no Initialize either
@@ -153,20 +158,22 @@ int main(int argc, char** argv) {
     // name, and the wrong one gets as far as constructing a std::string from a
     // null and aborting with basic_string::_S_construct. Taken from WAM's own
     // WAM_SWITCHES on the device.
+    // weboswayland, not wayland: this is WAM's backend, and it is the only
+    // combination found so far that starts at all. See README - webOS 3's own
+    // native browser uses plain "wayland" with --webos-launch-json, and copying
+    // that verbatim crashes here, which is the open thread.
     args.push_back("--ozone-platform=weboswayland");
     args.push_back("--no-sandbox");
     args.push_back("--no-zygote");
     args.push_back("--in-process-gpu");
     args.push_back(std::string("--browser-subprocess-path=") + argv[0]);
     args.push_back(std::string("--user-data-dir=/tmp/") + kAppId);
-    // Required, not decorative: without --webos-wam the process exits before
-    // writing a line of log.
+    // Required: without --webos-wam the process exits before writing a log line.
     args.push_back("--webos-wam");
     args.push_back("--noerrdialogs");
     // webOS 3's GPU path needs more setup than webOS 4's. Without these the
     // command buffer fails to initialise - "Could not send
-    // GpuCommandBufferMsg_Initialize" - and Chromium cannot draw at all. From
-    // WAM's own WAM_SWITCHES on this generation.
+    // GpuCommandBufferMsg_Initialize". From WAM's own WAM_SWITCHES.
     args.push_back("--enable-gpu-rasterization");
     args.push_back("--enable-impl-side-painting");
     args.push_back("--ignore-gpu-blacklist");

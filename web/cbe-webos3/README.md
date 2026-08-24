@@ -116,18 +116,47 @@ which also exists in the library, changes nothing either way.
 The app does reach the Luna bus: `ls-monitor -l` shows two client-only connections owned by
 the executable, without a service name. So libcbe's own LS2 client is running.
 
-### Only one binary on the whole TV links libcbe
+### There *is* a standalone embedder on webOS 3
 
-Scanning `/usr/bin` and every installed app on webOS 3 turns up exactly one consumer:
-`/usr/bin/WebAppMgr`. The web browser there is a *web app* that WAM hosts, not a native
-binary of its own - unlike webOS 4, where `com.webos.app.browser/chrome` links libcbe
-directly. So on this generation there is no standalone embedder anywhere in the firmware to
-copy, which is why none of this can be checked against a working example.
+An earlier version of this file said there was not, on the strength of scanning `/usr/bin`
+and `/usr/palm/applications`. That was wrong, and the way to find it is to ask SAM what is
+running rather than to search the filesystem:
 
-webOS 3's `WebAppMgr` binary is also no help: its undefined symbols are the same short list
-as webOS 4's - `WebOSMain`, `WebAppManagerServiceLuna::instance()`,
-`WebAppManager::instance()`, `setPlatformModules` - so at process level it does what this
-sample does.
+```sh
+luna-send -n 1 -f luna://com.webos.applicationManager/running '{}'
+```
+
+`com.webos.app.browser` is there, `appType: native_builtin`, with a live pid - and
+`/proc/<pid>/exe` points at
+`/mnt/otncabi/usr/palm/applications/com.webos.app.browser/chrome`, which does link libcbe.
+It is under `/mnt/otncabi`, which is why the earlier search missed it.
+
+Its command line is the reference this sample has been missing, and two switches in it
+contradict what was being used here:
+
+```
+--ozone-platform=wayland          (not weboswayland)
+--webos-launch-json={"@system_native_app":true,"preload":"partial",
+                     "nid":"com.webos.app.browser","launchHidden":true}
+--in-process-gpu --ignore-gpu-blacklist --gpu-no-context-lost
+--disable-gpu-watchdog --enable-accelerated-compositing
+--set-maximized --window-size=1920,1080
+```
+
+There is no `--webos-wam` at all. `weboswayland` is WAM's backend - the one whose
+`SetWidgetState` leaves `SHOW` unimplemented - and a non-WAM app is evidently expected to
+use plain `wayland` and identify itself through `--webos-launch-json`, whose `nid` is the
+app id.
+
+Adopting that configuration verbatim does not work yet: the process dies during startup,
+inside libcbe under `__vsnprintf_chk`. Dropping just the launch-json and keeping
+`--ozone-platform=wayland` dies too. So something else in the browser's setup is required -
+it runs jailed under `/var/palm/jail/com.webos.app.browser`, which is the obvious next
+suspect. The sample therefore still ships the `weboswayland` + `--webos-wam` combination,
+which is the only one found so far that starts at all.
+
+**This is the thread to pull.** A working standalone embedder exists on the same TV; the
+remaining work is finding what else it needs.
 
 ### Registering with SAM: necessary, and still not sufficient
 
