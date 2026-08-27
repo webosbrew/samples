@@ -8,4 +8,8 @@
 /assets/*.pcm
 /assets/*.ac3
 
+# Claude Code's per-project MCP server config: machine-local, since it carries
+# absolute paths to whatever tooling the checkout happens to sit next to.
+/.mcp.json
+
 .DS_Store

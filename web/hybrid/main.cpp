@@ -1,0 +1,423 @@
+// One process, two windows: an SDL2 view and a libcbe web view, swapping places.
+//
+// This is the shape a hybrid app wants - native code drawing one screen, a real
+// browser drawing another - and the awkward part is that the two disagree about
+// who owns the process. WebOSMain() is Chromium's content main: it never returns
+// and it owns the message loop. SDL normally wants a `while (SDL_PollEvent)` loop
+// in main(). Only one of them can have it.
+//
+// Chromium wins, and SDL is driven from its loop instead. libcbe pumps the
+// default GMainContext on its browser UI thread, so a g_timeout_add() there polls
+// SDL events and repaints at a fixed rate. Both toolkits then live on one thread
+// with one loop, each with its own Wayland surface, and swapping views is a
+// matter of hiding one and showing the other.
+//
+//   [SDL view] --OK/Enter--> [web view] --exit button or Back--> [SDL view]
+
+#include <SDL.h>
+#include <SDL_webOS.h>
+
+#include "native_ui.h"
+#include <glib.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <unistd.h>
+#include <string>
+#include <vector>
+
+#include "webos/webapp_window_base.h"
+#include "webos/webview_base.h"
+
+extern "C" int WebOSMain(int argc, const char** argv);
+
+// Only the webOS fork of SDL has this, and only from webOS 4 on.
+extern "C" SDL_bool SDL_webOSCursorVisibility(SDL_bool visible) __attribute__((weak));
+
+namespace {
+
+const char kAppId[] = "org.webosbrew.sample.web.hybrid";
+
+// Where the login flow is told to send the user when it is done. It does not
+// have to resolve, and here it deliberately does not: the app intercepts the
+// navigation before the load can fail. This is how an OAuth redirect_uri
+// behaves in a native client - chiaki's PSN login uses
+// https://remoteplay.dl.playstation.net/remoteplay/redirect the same way.
+const char kRedirectPrefix[] = "https://webosbrew.invalid/callback";
+
+std::string g_app_path;
+
+// ---------------------------------------------------------------- web view
+
+class HybridWebView;
+void ShowNativeView();
+void RequestNativeView();
+void OnRedirect(const std::string& url);
+std::string BuildAuthUrl();
+
+// The page asks to leave through libcbe's own callbacks, not through a side
+// effect of some UI property. Loading the "palmsystem" injection gives page
+// JavaScript real entry points, and two of them land here:
+//
+//   PalmSystem.close()         -> WebViewDelegate::Close()
+//   PalmSystem.platformBack()  -> HandleBrowserControlCommand("platformBack")
+//
+// Close() is the delegate's own dedicated slot, so nothing is overloaded and
+// nothing has to be parsed out of a shared channel.
+
+bool g_web_visible;
+
+class HybridWebView : public webos::WebViewBase {
+ public:
+  void TitleChanged(const std::string& title) override {
+    printf("[web] title '%s'\n", title.c_str());
+  }
+  void LoadFinished(const std::string&) override { puts("[web] load finished"); }
+  // The redirect target never resolves, so this fires with ERR_NAME_NOT_RESOLVED
+  // right after the interception above. Expected, and not worth reporting.
+  void LoadFailed(const std::string& url, int code, const std::string& desc) override {
+    if (url.compare(0, sizeof(kRedirectPrefix) - 1, kRedirectPrefix) == 0) return;
+    printf("[web] FAILED %s (%d %s)\n", url.c_str(), code, desc.c_str());
+  }
+  void DidFinishNavigation(const std::string&, bool) override {}
+  bool DecidePolicyForResponse(bool, int, const std::string&, const std::string&) override {
+    return false;
+  }
+  void RenderProcessCreated(int pid) override { printf("[web] renderer pid %d\n", pid); }
+
+  void LoadProgressChanged(double) override {}
+  void DidFirstFrameFocused() override {}
+  void LoadVisuallyCommitted() override {}
+  void NavigationHistoryChanged() override {}
+  // PalmSystem.close(): a real close. Chromium means it - the callback arrives
+  // from RenderViewHostImpl::OnClose() and the render view is being destroyed -
+  // so this is the wrong way to say "hide me, I will be back". The page uses
+  // platformBack for that; this is kept so a page that does close itself still
+  // hands the screen back rather than leaving a dead window up.
+  void Close() override {
+    puts("[web] page closed itself");
+    RequestNativeView();
+  }
+
+  // PalmSystem.platformBack(): a Back gesture, and only a notification - nothing
+  // is torn down, so the page survives to be shown again.
+  void HandleBrowserControlCommand(const std::string& command,
+                                   const std::vector<std::string>&) override {
+    printf("[web] browser control '%s'\n", command.c_str());
+    if (command == "platformBack") RequestNativeView();
+  }
+
+  // The other direction, unused by this flow but kept because it is the only
+  // channel that carries a value both ways. See README.md.
+  void HandleBrowserControlFunction(const std::string& command,
+                                    const std::vector<std::string>& args,
+                                    std::string*) override {
+    printf("[web] function '%s' (%zu args)\n", command.c_str(), args.size());
+  }
+  void LoadStarted() override { puts("[web] load started"); }
+  void LoadStopped() override { puts("[web] load stopped"); }
+  // The whole point of the sample. Every navigation the web view starts passes
+  // through here first, with the full URL and its query string, *before* the
+  // request is made - so a redirect target that cannot resolve is still caught.
+  void DidStartNavigation(const std::string& url, bool is_main_frame) override {
+    printf("[web] navigate %s\n", url.c_str());
+    if (!is_main_frame) return;
+    if (url.compare(0, sizeof(kRedirectPrefix) - 1, kRedirectPrefix) != 0) return;
+    OnRedirect(url);
+  }
+  void LoadAborted(const std::string&) override {}
+  void DocumentLoadFinished() override {}
+  void RenderProcessGone() override { puts("[web] renderer gone"); }
+};
+
+class HybridWindow : public webos::WebAppWindowBase {
+ public:
+  // The remote's Back key, if the TV lets the app have it.
+  bool event(WebOSEvent*) override { return false; }
+};
+
+HybridWindow* g_window;
+HybridWebView* g_webview;
+
+// ---------------------------------------------------------------- SDL view
+
+SDL_Window* g_sdl_window;
+bool g_native_visible;
+
+// --------------------------------------------------------------- switching
+
+void ShowWebView() {
+  if (g_web_visible) return;
+  puts("[switch] native -> web");
+  g_native_visible = false;
+  SDL_HideWindow(g_sdl_window);
+
+  const bool first_time = (g_webview == NULL);
+  if (first_time) {
+    g_window = new HybridWindow();
+    g_window->InitWindow(1920, 1080);
+    g_window->SetWindowProperty("appId", kAppId);
+    // Without these the TV keeps Back and Exit for itself and the web view never
+    // sees them - the same access policy the SDL side asks for through
+    // SDL_HINT_WEBOS_ACCESS_POLICY_KEYS_*. The property names come out of
+    // libWebAppMgr.so, which is the only place they are written down.
+    g_window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_BACK", "true");
+    g_window->SetWindowProperty("_WEBOS_ACCESS_POLICY_KEYS_EXIT", "true");
+    g_window->SetWindowHostState(webos::NATIVE_WINDOW_FULLSCREEN);
+    // The form needs somewhere to type from a remote.
+    g_window->SetUseVirtualKeyboard(true);
+
+    g_webview = new HybridWebView();
+    g_webview->Initialize(kAppId, g_app_path, "trusted", "", "", 1920, 1080, false);
+    g_webview->SetAppId(kAppId);
+    g_webview->SetAppPath(g_app_path);
+    // All three are needed to load the app's own page.html over file://. Two are
+    // not enough: without SetAllowUniversalAccessFromFileUrls the renderer is
+    // killed mid-load with "bad IPC message, reason 114" rather than being told
+    // no. SetWebSecurityEnabled(false), which is the obvious sledgehammer, turns
+    // out not to be needed at all.
+    g_webview->SetAllowLocalResourceLoad(true);
+    g_webview->SetFileAccessBlocked(false);
+    g_webview->SetAllowUniversalAccessFromFileUrls(true);
+    g_webview->SetLocalStorageEnabled(true);
+    // Without this the page has no PalmSystem object and therefore no way to
+    // reach native code at all. It needs the "trusted" trust level passed to
+    // Initialize() above, and the name is "palmsystem", not "v8/palmsystem".
+    g_webview->LoadExtension("palmsystem");
+    g_webview->UpdatePreferences();
+  } else {
+    // Second time round the page is still loaded - only woken up.
+    g_webview->ResumeWebPageDOM();
+    g_webview->ResumePaintingAndSetVisibilityVisible();
+  }
+
+  g_webview->SetVisible(true);
+
+  // Every time, not just the first, and before Show(). Hide() does not unmap the
+  // window - it destroys it, "Wayland Window(id:1) will be destroyed" - so the
+  // next Show() builds a fresh one and contents left attached to the old window
+  // composite nowhere. Attaching after Show() does not work either: the page
+  // loads and never appears.
+  g_window->AttachWebContents(g_webview->GetWebContents());
+  g_window->Show();
+  g_window->Activate();
+  g_web_visible = true;
+
+  // A sign-in always starts fresh, with a new nonce - resuming a half-finished
+  // login page would be the wrong thing even though the machinery allows it.
+  const std::string url = BuildAuthUrl();
+  printf("[web] loading %s\n", url.c_str());
+  g_webview->LoadUrl(url);
+}
+
+void ShowNativeView() {
+  if (!g_native_visible) {
+    puts("[switch] web -> native");
+    if (g_web_visible) {
+      // Suspending the page as well as hiding the window is what stops a
+      // backgrounded web view from burning CPU on timers and animation.
+      g_webview->SuspendPaintingAndSetVisibilityHidden();
+      g_webview->SuspendWebPageDOM();
+      g_webview->SetVisible(false);
+      // No DetachWebContents() here. It segfaults: by the time this runs the
+      // contents libcbe would detach are already gone, and it dereferences null.
+      g_window->SetWindowHostState(webos::NATIVE_WINDOW_MINIMIZED);
+      g_window->Hide();
+      g_web_visible = false;
+    }
+    SDL_ShowWindow(g_sdl_window);
+    SDL_RaiseWindow(g_sdl_window);
+    g_native_visible = true;
+  }
+}
+
+// Delegate callbacks arrive *inside* libcbe's own call stack - Close() comes
+// straight out of RenderViewHostImpl::OnClose() - so tearing the window down
+// from one lands in the middle of a teardown libcbe has not finished. It
+// segfaults on a null pointer. Bouncing through the loop first means the switch
+// happens once libcbe is back at idle and its own state is consistent.
+gboolean SwitchToNativeLater(gpointer) {
+  ShowNativeView();
+  return G_SOURCE_REMOVE;
+}
+
+void RequestNativeView() { g_idle_add(SwitchToNativeLater, NULL); }
+
+// Pulls one query parameter out of a URL. Deliberately tiny: a real client
+// wants proper percent-decoding, this only needs to survive a demo.
+std::string QueryParam(const std::string& url, const std::string& key) {
+  const std::string needle = key + "=";
+  size_t at = url.find('?');
+  if (at == std::string::npos) return std::string();
+  for (size_t p = at + 1; p < url.size();) {
+    size_t end = url.find('&', p);
+    if (end == std::string::npos) end = url.size();
+    if (url.compare(p, needle.size(), needle) == 0)
+      return url.substr(p + needle.size(), end - p - needle.size());
+    p = end + 1;
+  }
+  return std::string();
+}
+
+// The redirect happened. Everything the flow produced is in this URL.
+void OnRedirect(const std::string& url) {
+  const std::string user = QueryParam(url, "user");
+  const std::string state = QueryParam(url, "state");
+  printf("[auth] redirect: user='%s' state='%s'\n", user.c_str(), state.c_str());
+
+  // Stop before the dead host wastes a DNS lookup and an error page.
+  g_webview->StopLoading();
+
+  char line[200];
+  if (state != native_ui_state()) {
+    // Someone else's redirect, or a stale one. A real client must check this.
+    snprintf(line, sizeof(line), "rejected: state did not match");
+  } else if (user.empty()) {
+    snprintf(line, sizeof(line), "sign-in cancelled");
+  } else {
+    snprintf(line, sizeof(line), "signed in as %s", user.c_str());
+  }
+  native_ui_set_result(line);
+  RequestNativeView();
+}
+
+// Native hands data *to* the flow the same way any OAuth client does: in the
+// URL it opens. No JavaScript involved.
+std::string BuildAuthUrl() {
+  return "file://" + g_app_path + "/page.html?state=" + native_ui_new_state() +
+         "&redirect_uri=" + kRedirectPrefix;
+}
+
+// ------------------------------------------------------------- the one loop
+
+gboolean Pump(gpointer) {
+  SDL_Event e;
+  while (SDL_PollEvent(&e)) {
+    if (e.type == SDL_QUIT) return G_SOURCE_REMOVE;
+
+    native_ui_handle_event(&e);
+    if (e.type != SDL_KEYDOWN) continue;
+
+    // Two different numbers. The remote's OK arrives as an ordinary keysym, but
+    // Back and Exit have no keysym at all - the webOS fork of SDL reports them
+    // as scancodes above 480, listed in SDL_webOS.h. Switching on keysym.sym
+    // alone means Back can never match, which is a quiet way to lose it.
+    const int sym = static_cast<int>(e.key.keysym.sym);
+    const int scancode = static_cast<int>(e.key.keysym.scancode);
+    printf("[sdl] key sym=%d scancode=%d\n", sym, scancode);
+
+    if (scancode == SDL_WEBOS_SCANCODE_BACK || scancode == SDL_WEBOS_SCANCODE_EXIT) {
+      if (!g_native_visible) ShowNativeView();
+      continue;
+    }
+    switch (sym) {
+      case SDLK_RETURN:
+      case SDLK_KP_ENTER:
+      case SDLK_SPACE:
+        if (g_native_visible) ShowWebView();
+        break;
+      case SDLK_AC_BACK:
+      case SDLK_ESCAPE:
+      case SDLK_BACKSPACE:
+        if (!g_native_visible) ShowNativeView();
+        break;
+      default:
+        break;
+    }
+  }
+  // Nuklear is immediate mode: the UI is rebuilt every frame, and the button
+  // reports itself by return value rather than through a callback.
+  if (g_native_visible && g_sdl_window != NULL && native_ui_frame(g_sdl_window)) {
+    ShowWebView();
+  }
+  return G_SOURCE_CONTINUE;
+}
+
+// Runs on Chromium's browser UI thread, once, as soon as the browser is up.
+gboolean StartApp(gpointer) {
+  // SDL reads its EGL platform from the environment at video-init time.
+  setenv("EGL_PLATFORM", "wayland", 0);
+
+  if (SDL_Init(0) != 0) {
+    printf("[sdl] SDL_Init failed: %s\n", SDL_GetError());
+    return G_SOURCE_REMOVE;
+  }
+  // Without these the TV keeps Back and Exit for itself and the app never sees
+  // them. They are plain strings, so setting them costs nothing where they are
+  // not understood.
+  SDL_SetHint(SDL_HINT_WEBOS_ACCESS_POLICY_KEYS_BACK, "true");
+  SDL_SetHint(SDL_HINT_WEBOS_ACCESS_POLICY_KEYS_EXIT, "true");
+
+  if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+    printf("[sdl] SDL_INIT_VIDEO failed: %s\n", SDL_GetError());
+    return G_SOURCE_REMOVE;
+  }
+  printf("[sdl] video driver: %s\n", SDL_GetCurrentVideoDriver());
+
+  g_sdl_window = SDL_CreateWindow("hybrid", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                                  1920, 1080, SDL_WINDOW_FULLSCREEN | SDL_WINDOW_OPENGL);
+  if (g_sdl_window == NULL) {
+    printf("[sdl] SDL_CreateWindow failed: %s\n", SDL_GetError());
+    return G_SOURCE_REMOVE;
+  }
+  if (!native_ui_init(g_sdl_window)) return G_SOURCE_REMOVE;
+  // The remote's pointer is a mouse as far as SDL is concerned, but the cursor
+  // has to be asked for. Weakly linked: webOS 3 and older have the hints but not
+  // this call, and a hard reference would stop the app loading there.
+  if (SDL_webOSCursorVisibility != NULL) SDL_webOSCursorVisibility(SDL_TRUE);
+
+  g_native_visible = true;
+  puts("[sdl] native view up - click the button, or press OK/Enter");
+
+  g_timeout_add(16, Pump, NULL);
+  return G_SOURCE_REMOVE;
+}
+
+bool IsBrowserProcess(int argc, char** argv) {
+  for (int i = 1; i < argc; ++i)
+    if (strncmp(argv[i], "--type=", 7) == 0) return false;
+  return true;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  // SAM points a launched app's stdout at /dev/null, so everything printed below
+  // is invisible unless it is redirected somewhere. (libcbe's own logging goes
+  // through PmLog and reaches /var/log/messages regardless.)
+  if (IsBrowserProcess(argc, argv)) {
+    freopen("/tmp/" APP_LOG_NAME ".log", "w", stdout);
+    dup2(1, 2);
+  }
+  setvbuf(stdout, NULL, _IOLBF, 0);
+
+  const char* slash = strrchr(argv[0], '/');
+  g_app_path = slash ? std::string(argv[0], slash - argv[0]) : std::string(".");
+  const bool browser = IsBrowserProcess(argc, argv);
+
+  std::vector<std::string> args;
+  args.push_back(argv[0]);
+  if (browser) {
+    args.push_back("--ozone-platform=wayland");
+    args.push_back("--no-sandbox");
+    args.push_back("--no-zygote");
+    args.push_back("--in-process-gpu");
+    args.push_back(std::string("--browser-subprocess-path=") + argv[0]);
+    args.push_back(std::string("--user-data-dir=/tmp/") + kAppId);
+    // Page console.log is invisible without this.
+    args.push_back("--enable-logging=stderr");
+  }
+  for (int i = 1; i < argc; ++i) args.push_back(argv[i]);
+
+  std::vector<const char*> cargv;
+  for (size_t i = 0; i < args.size(); ++i) cargv.push_back(args[i].c_str());
+
+  if (!getenv("XDG_RUNTIME_DIR")) setenv("XDG_RUNTIME_DIR", "/tmp/xdg", 1);
+
+  // Chromium re-execs this same binary for the renderer; only the browser
+  // process gets windows.
+  if (browser) g_idle_add(StartApp, NULL);
+
+  return WebOSMain(static_cast<int>(cargv.size()), cargv.data());
+}
