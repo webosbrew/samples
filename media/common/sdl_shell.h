@@ -24,7 +24,8 @@
 typedef struct sdl_shell {
     SDL_Window *window;
     SDL_Renderer *renderer;
-    /* Panel size in pixels - what the video plane should be stretched to. */
+    /* Size of the app's surface - the coordinate space video areas are given in, which is
+     * not the panel's pixel size on a UHD set. */
     int display_width;
     int display_height;
     bool quit_requested;
@@ -40,12 +41,6 @@ bool sdl_shell_open_window(sdl_shell *shell, const char *title);
 /* Clears to transparent black and presents, letting the video plane below show through.
  * This is the whole of "punch-through" on webOS - there is no special surface type. */
 void sdl_shell_present_transparent(sdl_shell *shell);
-
-/* The physical panel size, which is not always the size of the app's surface: a webOS 4
- * set can hand SDL a 1280x720 window while driving a 1920x1080 screen. Video planes are
- * positioned in panel coordinates, so using the window size there puts the picture in a
- * corner. Falls back to the window size when the panel cannot be queried. */
-void sdl_shell_panel_size(const sdl_shell *shell, int *width, int *height);
 
 /* Drains the event queue. Returns false once the user has asked to quit (window close,
  * Escape, or the remote's Back / Exit keys). */

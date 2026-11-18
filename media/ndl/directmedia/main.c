@@ -237,15 +237,13 @@ int main(int argc, char *argv[]) {
             .audio_sample_rate = audio ? es_file_sample_rate(audio) : 0,
     };
 
-    /* Panel coordinates, not window coordinates - see sdl_shell_panel_size. */
-    int panel_width = 0;
-    int panel_height = 0;
-    sdl_shell_panel_size(&shell, &panel_width, &panel_height);
-    fprintf(stderr, "[main] window %dx%d, panel %dx%d\n", shell.display_width,
-            shell.display_height, panel_width, panel_height);
+    /* NDL places the video in the app's own coordinate space - the size of the SDL window,
+     * 1920x1080 for a normal app - not in panel pixels, which differ on a UHD set. */
+    fprintf(stderr, "[main] window %dx%d\n", shell.display_width, shell.display_height);
 
     int exit_code = 0;
-    if (!directmedia_open(player, &params, panel_width, panel_height)) {
+    if (!directmedia_open(player, &params, shell.display_width,
+                          shell.display_height)) {
         exit_code = 1;
         goto teardown;
     }
