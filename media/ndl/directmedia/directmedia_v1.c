@@ -106,7 +106,8 @@ bool directmedia_open(directmedia *player, const directmedia_params *params,
      * to it unconditionally. Register one and use the WithCallback variant instead. */
     NDL_DirectVideoSetCallback(video_play_callback);
 
-    /* Unlike LGNC this one really is in panel pixels. */
+    /* Like LGNC, in the app's own coordinates (the SDL window), not panel pixels: on a UHD
+     * set the panel size would zoom the picture to twice its size. */
     NDL_DirectVideoSetArea(0, 0, display_width, display_height);
     fprintf(stderr, "[ndl] video area 0,0 %dx%d\n", display_width, display_height);
 
